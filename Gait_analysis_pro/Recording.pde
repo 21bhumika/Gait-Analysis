@@ -15,6 +15,7 @@ synchronized void startRecording() {
   recording = createWriter("recordings/session_" + stamp + ".txt");
   recording.println("time_ms,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec");
   recordStart = millis();
+  resetGait();
 }
 
 synchronized void stopRecording() {
