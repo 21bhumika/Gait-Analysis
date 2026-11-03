@@ -31,6 +31,9 @@ void serialEvent(Serial p) {
   String[] v = split(raw, ',');
   if (v.length < 10) return;
 
+  /* positions for green board:
+  pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
+  */
   pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
   ax = float(v[5]);
   ay = float(v[6]);
