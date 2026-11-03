@@ -1,4 +1,4 @@
-// ── Serial / data ────────────────────────────────────────────────
+// Serial / data
 // Arduino format: DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec
 // Baud: 115200  |  Rate: 20 Hz (every 50 ms)
 
@@ -48,13 +48,13 @@ void pushSample(float mf, float lf, float mm, float heel) {
   mmBuf[BUF-1] = mm;  heelBuf[BUF-1] = heel;
 }
 
-// ── Layout constants ─────────────────────────────────────────────
+// Layout constants 
 final int DIVX  = 1100 / 3;   // vertical divider x
 final int DIVY  = 700  / 2;   // horizontal divider y (right side)
 final int PAD   = 10;
 final int TITLE = 24;          // height reserved for section titles
 
-// ── Top-level draw call ──────────────────────────────────────────
+// Top-level draw call 
 void drawSensorAnalysis() {
   background(242, 242, 242);
   drawSADividers();
@@ -64,29 +64,16 @@ void drawSensorAnalysis() {
   drawSABackBtn();
 }
 
-// ── Dividers ─────────────────────────────────────────────────────
+// Dividers 
 void drawSADividers() {
   stroke(200); strokeWeight(1);
   line(DIVX, 0, DIVX, height);
   line(DIVX, DIVY, width, DIVY);
 }
 
-// ── Left 1/3: heatmap placeholder ────────────────────────────────
-void drawHeatmap() {
-  noStroke(); fill(248);
-  rect(0, 0, DIVX, height);
+// Left 1/3: heatmap, see Heatmap.pde 
 
-  fill(80); textAlign(CENTER, TOP); textSize(13);
-  text("Pressure Heatmap", DIVX / 2, 14);
-
-  fill(225); stroke(190); strokeWeight(1);
-  rect(PAD + 5, 45, DIVX - (PAD + 5) * 2, height - 60, 6);
-
-  fill(155); noStroke(); textSize(12); textAlign(CENTER, CENTER);
-  text("[ Not Implemented ]", DIVX / 2, height / 2);
-}
-
-// ── Top-right: 4 FSR graphs in 2×2 grid ─────────────────────────
+// Top-right: 4 FSR graphs in 2×2 grid 
 void drawFSRGraphs() {
   int rx = DIVX, rw = width - DIVX, rh = DIVY;
 
@@ -121,7 +108,7 @@ void drawGraph(String label, float[] data, int x, int y, int w, int h, color c) 
   }
 }
 
-// ── Bottom-right: 4 info boxes ───────────────────────────────────
+// Bottom-right: 4 info boxes
 void drawInfoPanel() {
   int rx = DIVX, rw = width - DIVX, ry = DIVY, rh = height - DIVY;
 
@@ -153,7 +140,7 @@ void drawInfoBox(String label, String value, int x, int y, int w, int h) {
   text(value, x + 8, y + h - 6);
 }
 
-// ── Back button ──────────────────────────────────────────────────
+// Back button
 void drawSABackBtn() {
   fill(230); stroke(180); strokeWeight(1);
   rect(DIVX + PAD, PAD - 4, 68, 24, 4);
