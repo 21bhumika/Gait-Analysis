@@ -71,20 +71,7 @@ void drawSADividers() {
   line(DIVX, DIVY, width, DIVY);
 }
 
-// ── Left 1/3: heatmap placeholder ────────────────────────────────
-void drawHeatmap() {
-  noStroke(); fill(248);
-  rect(0, 0, DIVX, height);
-
-  fill(80); textAlign(CENTER, TOP); textSize(13);
-  text("Pressure Heatmap", DIVX / 2, 14);
-
-  fill(225); stroke(190); strokeWeight(1);
-  rect(PAD + 5, 45, DIVX - (PAD + 5) * 2, height - 60, 6);
-
-  fill(155); noStroke(); textSize(12); textAlign(CENTER, CENTER);
-  text("[ Not Implemented ]", DIVX / 2, height / 2);
-}
+// ── Left 1/3: heatmap → see Heatmap.pde ─────────────────────────
 
 // ── Top-right: 4 FSR graphs in 2×2 grid ─────────────────────────
 void drawFSRGraphs() {
