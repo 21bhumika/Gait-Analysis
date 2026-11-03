@@ -54,7 +54,7 @@ public class SSApp extends PApplet {
 		//Sounds.jumpSound.amp(2.0f);
 		Sounds.runSound = new SoundFile(this, "runSound.wav");
 		//Sounds.runSound.amp(0.5f);
-		Sounds.mainTheme = new SoundFile(this, "mainTheme.wav");
+		Sounds.mainTheme = new SoundFile(this, "mainTheme.mp3");
 		Sounds.mainTheme.amp(0.15f);
 		
 		Sounds.guardSound = new SoundFile(this, "guardHey.wav");
