@@ -39,11 +39,27 @@ int fsrHeel = 0;
 const int FSR_MAX = 900;
 
 
-// MOTION DETECTION
-// Magnitude deviation from 1 g required to classify motion
-const float MOTION_THRESHOLD = 1.2;
+// =====================================================
+// MOTION DETECTION (gyro + accel change)
+// =====================================================
 
-// Current motion state
+// Gyro bias measured at rest (rad/s)
+const float GYRO_BIAS_X = -0.13;
+const float GYRO_BIAS_Y =  0.02;
+const float GYRO_BIAS_Z = -0.01;
+
+const float GYRO_THRESHOLD        = 0.15;  // rad/s (~9 deg/s)
+const float ACCEL_DELTA_THRESHOLD = 0.30;  // m/s^2 change per check
+const unsigned long MOTION_CHECK_PERIOD = 50;   // ms
+const unsigned long MOTION_HOLD_MS      = 500;  // stay "in motion" this long
+
+float prevAx = 0, prevAy = 0, prevAz = 0;
+bool havePrev = false;
+float gyroMag = 0;
+float accelDelta = 0;
+unsigned long lastMotionCheck = 0;
+unsigned long lastMotionSeen = 0;
+
 bool inMotion = false;
 
 // Time when movement started
@@ -140,18 +156,40 @@ void loop() {
   float ay = a.acceleration.y;
   float az = a.acceleration.z;
 
-  // 4. ACCELERATION MAGNITUDE
-  float accelerationMagnitude =
-    sqrt(
-      ax * ax +
-      ay * ay +
-      az * az
-    );
 
-  // At rest, gravity gives approximately 9.81 m/s².
-  // Calculate deviation from gravity.
-  float motionValue = abs(accelerationMagnitude - 9.81);
-  bool newMotionState = motionValue > MOTION_THRESHOLD;
+    // ===================================================
+  // 4. MOTION DETECTION
+  // ===================================================
+
+  if (millis() - lastMotionCheck >= MOTION_CHECK_PERIOD) {
+
+    lastMotionCheck = millis();
+
+    // Gyro magnitude with bias removed
+    float gxc = g.gyro.x - GYRO_BIAS_X;
+    float gyc = g.gyro.y - GYRO_BIAS_Y;
+    float gzc = g.gyro.z - GYRO_BIAS_Z;
+    gyroMag = sqrt(gxc * gxc + gyc * gyc + gzc * gzc);
+
+    // Accel change since the previous check
+    accelDelta = havePrev
+      ? fabs(ax - prevAx) + fabs(ay - prevAy) + fabs(az - prevAz)
+      : 0;
+
+    prevAx = ax;
+    prevAy = ay;
+    prevAz = az;
+    havePrev = true;
+
+    if (gyroMag > GYRO_THRESHOLD || accelDelta > ACCEL_DELTA_THRESHOLD) {
+      lastMotionSeen = millis();
+    }
+  }
+
+  // "In motion" until MOTION_HOLD_MS after the last trigger
+  bool newMotionState =
+    (lastMotionSeen != 0) &&
+    (millis() - lastMotionSeen < MOTION_HOLD_MS);
 
   // 5. ACTIVITY TIME
   if (newMotionState && !inMotion) { // Movement just started
@@ -174,53 +212,65 @@ void loop() {
   if (millis() - lastSend >= SEND_PERIOD) {
     lastSend = millis();
     // Format:
-    //
-    // DATA,
-    // MF,
-    // LF,
-    // MM,
-    // HEEL,
-    // ax,
-    // ay,
-    // az,
-    // motion,
-    // activitySeconds
+    // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds
 
     Serial.print("DATA,");
 
-    Serial.print(fsrMF);
-    Serial.print(",");
+    Serial.print(fsrMF);    Serial.print(",");
+    Serial.print(fsrLF);    Serial.print(",");
+    Serial.print(fsrMM);    Serial.print(",");
+    Serial.print(fsrHeel);  Serial.print(",");
 
-    Serial.print(fsrLF);
-    Serial.print(",");
-
-    Serial.print(fsrMM);
-    Serial.print(",");
-
-    Serial.print(fsrHeel);
-    Serial.print(",");
-
-
-    Serial.print(ax, 2);
-    Serial.print(",");
-
-    Serial.print(ay, 2);
-    Serial.print(",");
-
-    Serial.print(az, 2);
-    Serial.print(",");
-
+    Serial.print(ax, 2);    Serial.print(",");
+    Serial.print(ay, 2);    Serial.print(",");
+    Serial.print(az, 2);    Serial.print(",");
 
     Serial.print(inMotion ? 1 : 0);
     Serial.print(",");
 
+    Serial.println(currentActivityTime / 1000.0, 2);
+  }  
+  
+  // // ===================================================
+  // // 6. (TEST) PRINT ACCELEROMETER OUTPUTS ONLY
+  // // ===================================================
 
-    Serial.println(
-      currentActivityTime / 1000.0,
-      2
-    );
-  }
+  // if (millis() - lastSend >= SEND_PERIOD) {
 
+  //   lastSend = millis();
+
+  //   Serial.print("ax:");        Serial.print(ax, 2);
+  //   Serial.print(" ay:");       Serial.print(ay, 2);
+  //   Serial.print(" az:");       Serial.print(az, 2);
+  //   Serial.print(" mag:");      Serial.print(accelerationMagnitude, 2);
+  //   Serial.print(" magG:");     Serial.print(accelerationMagnitude / 9.81, 3);
+  //   Serial.print(" dev:");      Serial.print(motionValue, 2);
+  //   Serial.print(" thresh:");   Serial.print(MOTION_THRESHOLD, 2);
+  //   Serial.print(" motion:");   Serial.print(inMotion ? 1 : 0);
+  //   Serial.print(" gx:");       Serial.print(g.gyro.x, 2);
+  //   Serial.print(" gy:");       Serial.print(g.gyro.y, 2);
+  //   Serial.print(" gz:");       Serial.print(g.gyro.z, 2);
+  //   Serial.print(" tempC:");    Serial.println(temp.temperature, 1);
+  // }
+
+    // ===================================================
+  // 6. (TEST) PRINT RAW MPU6050 VALUES ONLY
+  // ===================================================
+
+  // if (millis() - lastSend >= SEND_PERIOD) {
+
+  //   lastSend = millis();
+
+  //   Serial.print(ax, 2);          Serial.print(",");
+  //   Serial.print(ay, 2);          Serial.print(",");
+  //   Serial.print(az, 2);          Serial.print(",");
+  //   Serial.print(g.gyro.x, 2);    Serial.print(",");
+  //   Serial.print(g.gyro.y, 2);    Serial.print(",");
+  //   Serial.print(g.gyro.z, 2);    Serial.print(",");
+  //   Serial.print(gyroMag, 2);     Serial.print(",");
+  //   Serial.print(accelDelta, 2);  Serial.print(",");
+  //   Serial.println(inMotion ? 1 : 0);
+  // }
 
   delay(2);
 }

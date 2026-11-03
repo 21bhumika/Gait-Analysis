@@ -14,14 +14,14 @@ float activitySec = 0;
 
 int   stepCount  = 0;
 float cadence    = 0;
-String gaitLabel = "Normal Gait";
+String gaitLabel = "—";
 boolean inMotion = false;
 
 void initSerial() {
   println("Available ports:");
   printArray(Serial.list());
   // Change index if your Arduino is not on the first port
-  port = new Serial(this, Serial.list()[0], 115200);
+  port = new Serial(this, Serial.list()[2], 115200);
   port.bufferUntil('\n');
 }
 
@@ -34,12 +34,20 @@ void serialEvent(Serial p) {
   /* positions for green board:
   pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
   */
+
+  /* positions for orange board:
+  pushSample(float(v[1]), float(v[4]), float(v[3]), float(v[2]));
+  */
+
   pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
+  
   ax = float(v[5]);
   ay = float(v[6]);
   az = float(v[7]);
   inMotion    = v[8].equals("1");
   activitySec = float(v[9]);
+  updateGait(millis());
+  recordSample();
 }
 
 void pushSample(float mf, float lf, float mm, float heel) {
@@ -65,6 +73,7 @@ void drawSensorAnalysis() {
   drawFSRGraphs();
   drawInfoPanel();
   drawSABackBtn();
+  drawRecordBtn();
 }
 
 // Dividers 
@@ -127,7 +136,7 @@ void drawInfoPanel() {
   int y0 = ry + TITLE,      y1 = ry + TITLE + bh + PAD;
 
   drawInfoBox("Step Count",    str(stepCount),                    x0, y0, bw, bh);
-  drawInfoBox("Cadence",       "— steps/min",                     x1, y0, bw, bh);
+  drawInfoBox("Cadence",       cadenceText(),                     x1, y0, bw, bh);
   drawInfoBox("Gait Profile",  gaitLabel,                         x0, y1, bw, bh);
   drawInfoBox("Status",        inMotion ? "In Motion" : "Standing", x1, y1, bw, bh);
 }
@@ -152,8 +161,11 @@ void drawSABackBtn() {
 }
 
 void sensorClick() {
-  if (mouseX >= DIVX + PAD && mouseX <= DIVX + PAD + 68 &&
-      mouseY >= PAD - 4    && mouseY <= PAD + 20) {
+  if (recordBtnHit()) {
+    toggleRecording();
+  } else if (mouseX >= DIVX + PAD && mouseX <= DIVX + PAD + 68 &&
+             mouseY >= PAD - 4    && mouseY <= PAD + 20) {
+    stopRecording();
     screen = 0;
   }
 }
