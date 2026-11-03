@@ -23,6 +23,21 @@ color[] hmColors = {
 
 // Sensor positions as fractions of the RIGHT foot image (medial side = left).
 // Order: MF, LF, MM, HEEL. The left foot uses the mirrored x.
+
+/* positions for green board 
+  {0.30, 0.33},   // MF   medial forefoot
+  {0.72, 0.41},   // LF   lateral forefoot
+  {0.27, 0.54},   // MM   medial midfoot
+  {0.50, 0.86}    // HEEL
+*/
+
+/* positions for orange board 
+ {0.70, 0.28},   // MF   medial forefoot
+  {0.32, 0.41},   // LF   lateral forefoot
+  {0.67, 0.50},   // MM   medial midfoot
+  {0.50, 0.86},   // HEEL
+*/
+
 // Positions for orange
 float[][] hmPoints = {
   {0.70, 0.28},   // MF   medial forefoot

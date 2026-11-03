@@ -31,8 +31,16 @@ void serialEvent(Serial p) {
   String[] v = split(raw, ',');
   if (v.length < 10) return;
 
-  // wiring for orange
-  pushSample(float(v[1]), float(v[4]), float(v[3]), float(v[2])); // 
+  /* positions for green board:
+  pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
+  */
+
+  /* positions for orange board:
+  pushSample(float(v[1]), float(v[4]), float(v[3]), float(v[2]));
+  */
+
+  pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
+  
   ax = float(v[5]);
   ay = float(v[6]);
   az = float(v[7]);
