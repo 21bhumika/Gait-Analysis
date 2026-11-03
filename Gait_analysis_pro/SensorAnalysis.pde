@@ -21,7 +21,7 @@ void initSerial() {
   println("Available ports:");
   printArray(Serial.list());
   // Change index if your Arduino is not on the first port
-  port = new Serial(this, Serial.list()[0], 115200);
+  port = new Serial(this, Serial.list()[2], 115200);
   port.bufferUntil('\n');
 }
 
@@ -31,12 +31,14 @@ void serialEvent(Serial p) {
   String[] v = split(raw, ',');
   if (v.length < 10) return;
 
-  pushSample(float(v[1]), float(v[2]), float(v[3]), float(v[4]));
+  // wiring for orange
+  pushSample(float(v[1]), float(v[4]), float(v[3]), float(v[2])); // 
   ax = float(v[5]);
   ay = float(v[6]);
   az = float(v[7]);
   inMotion    = v[8].equals("1");
   activitySec = float(v[9]);
+  recordSample();
 }
 
 void pushSample(float mf, float lf, float mm, float heel) {
@@ -62,6 +64,7 @@ void drawSensorAnalysis() {
   drawFSRGraphs();
   drawInfoPanel();
   drawSABackBtn();
+  drawRecordBtn();
 }
 
 // Dividers 
@@ -149,8 +152,11 @@ void drawSABackBtn() {
 }
 
 void sensorClick() {
-  if (mouseX >= DIVX + PAD && mouseX <= DIVX + PAD + 68 &&
-      mouseY >= PAD - 4    && mouseY <= PAD + 20) {
+  if (recordBtnHit()) {
+    toggleRecording();
+  } else if (mouseX >= DIVX + PAD && mouseX <= DIVX + PAD + 68 &&
+             mouseY >= PAD - 4    && mouseY <= PAD + 20) {
+    stopRecording();
     screen = 0;
   }
 }
