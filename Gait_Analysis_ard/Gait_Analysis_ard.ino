@@ -2,17 +2,11 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-// =====================================================
 // MPU6050
-// =====================================================
-
 Adafruit_MPU6050 mpu;
 
 
-// =====================================================
 // FSR PINS
-// =====================================================
-
 // Medial Forefoot
 const int FSR_MF = A0;
 
@@ -26,20 +20,14 @@ const int FSR_MM = A2;
 const int FSR_HEEL = A3;
 
 
-// =====================================================
 // LED PINS
-// =====================================================
-
 const int LED_MF   = 3;
 const int LED_LF   = 5;
 const int LED_MM   = 6;
 const int LED_HEEL = 9;
 
 
-// =====================================================
 // FSR VARIABLES
-// =====================================================
-
 int fsrMF = 0;
 int fsrLF = 0;
 int fsrMM = 0;
@@ -73,13 +61,15 @@ unsigned long lastMotionCheck = 0;
 unsigned long lastMotionSeen = 0;
 
 bool inMotion = false;
+
+// Time when movement started
 unsigned long motionStartTime = 0;
+
+// Total accumulated activity time
 unsigned long totalActivityTime = 0;
 
-// =====================================================
-// TIMING
-// =====================================================
 
+// TIMING
 unsigned long lastSend = 0;
 
 // 50 ms = 20 Hz
@@ -96,21 +86,12 @@ int readFSR(int pin) {
   return (v < 0) ? 0 : v;       // anything under the deadzone becomes 0
 }
 
-// =====================================================
 // SETUP
-// =====================================================
-
 void setup() {
-
   Serial.begin(115200);
-
   Wire.begin();
 
-
-  // ---------------------------------------------------
   // LED setup
-  // ---------------------------------------------------
-
   pinMode(LED_MF, OUTPUT);
   pinMode(LED_LF, OUTPUT);
   pinMode(LED_MM, OUTPUT);
@@ -123,19 +104,13 @@ void setup() {
   analogWrite(LED_HEEL, 0);
 
 
-  // ---------------------------------------------------
   // MPU6050 setup
-  // ---------------------------------------------------
-
   if (!mpu.begin()) {
-
     Serial.println("ERROR: MPU6050 not found");
-
     while (1) {
       delay(10);
     }
   }
-
 
   // Accelerometer range
   mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
@@ -146,31 +121,18 @@ void setup() {
   // Digital low-pass filter
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
-
   Serial.println("System ready");
 }
 
-
-// =====================================================
-// MAIN LOOP
-// =====================================================
-
 void loop() {
 
-  // ===================================================
   // 1. READ FSRs
-  // ===================================================
-
   fsrMF   = readFSR(FSR_MF);
   fsrLF   = readFSR(FSR_LF);
   fsrMM   = readFSR(FSR_MM);
   fsrHeel = readFSR(FSR_HEEL);
 
-
-  // ===================================================
   // 2. CONTROL LEDs
-  // ===================================================
-
   const int RANGE = FSR_MAX - FSR_DEADZONE;
 
   int ledMF   = map(constrain(fsrMF,   0, RANGE), 0, RANGE, 0, 255);
@@ -178,23 +140,17 @@ void loop() {
   int ledMM   = map(constrain(fsrMM,   0, RANGE), 0, RANGE, 0, 255);
   int ledHeel = map(constrain(fsrHeel, 0, RANGE), 0, RANGE, 0, 255);
 
-
   analogWrite(LED_MF, ledMF);
   analogWrite(LED_LF, ledLF);
   analogWrite(LED_MM, ledMM);
   analogWrite(LED_HEEL, ledHeel);
 
-
-  // ===================================================
   // 3. READ MPU6050
-  // ===================================================
-
   sensors_event_t a;
   sensors_event_t g;
   sensors_event_t temp;
 
   mpu.getEvent(&a, &g, &temp);
-
 
   float ax = a.acceleration.x;
   float ay = a.acceleration.y;
@@ -235,49 +191,26 @@ void loop() {
     (lastMotionSeen != 0) &&
     (millis() - lastMotionSeen < MOTION_HOLD_MS);
 
-
-  // ===================================================
   // 5. ACTIVITY TIME
-  // ===================================================
-
-  if (newMotionState && !inMotion) {
-
-    // Movement just started
+  if (newMotionState && !inMotion) { // Movement just started
     motionStartTime = millis();
   }
-
-
-  if (!newMotionState && inMotion) {
-
-    // Movement just stopped
+  if (!newMotionState && inMotion) { // Movement just stopped
     totalActivityTime +=
       millis() - motionStartTime;
   }
-
-
   inMotion = newMotionState;
 
-
   // Current activity time including active interval
-  unsigned long currentActivityTime =
-    totalActivityTime;
-
+  unsigned long currentActivityTime = totalActivityTime;
 
   if (inMotion) {
-
-    currentActivityTime +=
-      millis() - motionStartTime;
+    currentActivityTime += millis() - motionStartTime;
   }
 
-
-  // ===================================================
   // 6. SEND DATA TO PROCESSING
-  // ===================================================
-
   if (millis() - lastSend >= SEND_PERIOD) {
-
     lastSend = millis();
-
     // Format:
     // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds
 
