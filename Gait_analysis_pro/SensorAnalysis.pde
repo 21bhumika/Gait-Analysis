@@ -140,7 +140,7 @@ void drawInfoBox(String label, String value, int x, int y, int w, int h) {
   fill(130); textAlign(LEFT, TOP); textSize(10);
   text(label, x + 8, y + 6);
 
-  fill(30); textAlign(LEFT, BOTTOM); textSize(16);
+  fill(30); textAlign(LEFT, BOTTOM); textSize(34);
   text(value, x + 8, y + h - 6);
 }
 

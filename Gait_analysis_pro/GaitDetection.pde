@@ -10,7 +10,7 @@ final int GAIT_PAUSE_MS     = 3000;
 final int STEPS_PER_CONTACT = 2;              // sensors are on one foot only
 final int MIN_VOTES         = 3;
 
-final float IN_TOE_BALANCE  =  0.15;
+final float IN_TOE_BALANCE  =  0.11;
 final float OUT_TOE_BALANCE = -0.08;
 
 boolean footArmed = false;   // stays false until the first lift, so standing isn't a step

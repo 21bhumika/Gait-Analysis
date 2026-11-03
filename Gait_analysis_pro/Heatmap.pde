@@ -50,7 +50,7 @@ void drawHeatmap() {
   // Both feet currently show the same readings.
   // Pass separate values here once each foot has its own sensors.
   float footW = DIVX / 2 - 2 * PAD;
-  drawFootHeatmap(image,  PAD, footW, true,  mf, lf, mm, heel);
+  drawFootHeatmap(image, (DIVX - footW) / 2, footW, true, mf, lf, mm, heel);
 }
 
 void drawFootHeatmap(PImage img, float x, float w, boolean mirror,
