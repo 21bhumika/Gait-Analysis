@@ -77,6 +77,16 @@ unsigned long lastSend = 0;
 // 50 ms = 20 Hz
 const unsigned long SEND_PERIOD = 50;
 
+// Readings below this are treated as noise (ghost readings were ~4)
+const int FSR_DEADZONE = 15;
+
+int readFSR(int pin) {
+  analogRead(pin);              // throwaway read: lets the ADC settle
+  delayMicroseconds(100);
+  int v = analogRead(pin);      // real read
+  v -= FSR_DEADZONE;
+  return (v < 0) ? 0 : v;       // anything under the deadzone becomes 0
+}
 
 // =====================================================
 // SETUP
@@ -143,47 +153,22 @@ void loop() {
   // 1. READ FSRs
   // ===================================================
 
-  fsrMF   = analogRead(FSR_MF);
-  fsrLF   = analogRead(FSR_LF);
-  fsrMM   = analogRead(FSR_MM);
-  fsrHeel = analogRead(FSR_HEEL);
+  fsrMF   = readFSR(FSR_MF);
+  fsrLF   = readFSR(FSR_LF);
+  fsrMM   = readFSR(FSR_MM);
+  fsrHeel = readFSR(FSR_HEEL);
 
 
   // ===================================================
   // 2. CONTROL LEDs
   // ===================================================
 
-  int ledMF = map(
-    constrain(fsrMF, 0, FSR_MAX),
-    0,
-    FSR_MAX,
-    0,
-    255
-  );
+  const int RANGE = FSR_MAX - FSR_DEADZONE;
 
-  int ledLF = map(
-    constrain(fsrLF, 0, FSR_MAX),
-    0,
-    FSR_MAX,
-    0,
-    255
-  );
-
-  int ledMM = map(
-    constrain(fsrMM, 0, FSR_MAX),
-    0,
-    FSR_MAX,
-    0,
-    255
-  );
-
-  int ledHeel = map(
-    constrain(fsrHeel, 0, FSR_MAX),
-    0,
-    FSR_MAX,
-    0,
-    255
-  );
+  int ledMF   = map(constrain(fsrMF,   0, RANGE), 0, RANGE, 0, 255);
+  int ledLF   = map(constrain(fsrLF,   0, RANGE), 0, RANGE, 0, 255);
+  int ledMM   = map(constrain(fsrMM,   0, RANGE), 0, RANGE, 0, 255);
+  int ledHeel = map(constrain(fsrHeel, 0, RANGE), 0, RANGE, 0, 255);
 
 
   analogWrite(LED_MF, ledMF);
