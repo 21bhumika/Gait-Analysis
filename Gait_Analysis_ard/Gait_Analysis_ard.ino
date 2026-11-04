@@ -72,8 +72,8 @@ unsigned long totalActivityTime = 0;
 // TIMING
 unsigned long lastSend = 0;
 
-// 50 ms = 20 Hz
-const unsigned long SEND_PERIOD = 50;
+// 20 ms = 50 Hz (stride length integrates the gyro, 20 Hz is too coarse)
+const unsigned long SEND_PERIOD = 20;
 
 // Readings below this are treated as noise (ghost readings were ~4)
 const int FSR_DEADZONE = 15;
@@ -112,11 +112,11 @@ void setup() {
     }
   }
 
-  // Accelerometer range
-  mpu.setAccelerometerRange(MPU6050_RANGE_4_G);
+  // Accelerometer range (heel strikes clipped at 4 g)
+  mpu.setAccelerometerRange(MPU6050_RANGE_16_G);
 
-  // Gyroscope range
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  // Gyroscope range (a swinging foot can pass 500 deg/s)
+  mpu.setGyroRange(MPU6050_RANGE_2000_DEG);
 
   // Digital low-pass filter
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
@@ -212,7 +212,7 @@ void loop() {
   if (millis() - lastSend >= SEND_PERIOD) {
     lastSend = millis();
     // Format:
-    // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds
+    // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds,gx,gy,gz,timeMs
 
     Serial.print("DATA,");
 
@@ -228,9 +228,16 @@ void loop() {
     Serial.print(inMotion ? 1 : 0);
     Serial.print(",");
 
-    Serial.println(currentActivityTime / 1000.0, 2);
-  }  
-  
+    Serial.print(currentActivityTime / 1000.0, 2);
+    Serial.print(",");
+
+    Serial.print(g.gyro.x - GYRO_BIAS_X, 3);  Serial.print(",");
+    Serial.print(g.gyro.y - GYRO_BIAS_Y, 3);  Serial.print(",");
+    Serial.print(g.gyro.z - GYRO_BIAS_Z, 3);  Serial.print(",");
+
+    Serial.println(millis());
+  }
+
   // // ===================================================
   // // 6. (TEST) PRINT ACCELEROMETER OUTPUTS ONLY
   // // ===================================================
