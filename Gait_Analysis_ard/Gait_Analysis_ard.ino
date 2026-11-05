@@ -33,6 +33,16 @@ int fsrLF = 0;
 int fsrMM = 0;
 int fsrHeel = 0;
 
+//accelorometer vals
+float az = 0;
+float ay = 0;
+float ax = 0;
+
+//gyrometric vals
+float gxc = 0;
+float gyc = 0;
+float gzc = 0;
+
 
 // Maximum ADC value expected under pressure.
 // We can calibrate this later.
@@ -152,12 +162,12 @@ void loop() {
 
   mpu.getEvent(&a, &g, &temp);
 
-  float ax = a.acceleration.x;
-  float ay = a.acceleration.y;
-  float az = a.acceleration.z;
+  ax = a.acceleration.x;
+  ay = a.acceleration.y;
+  az = a.acceleration.z;
 
 
-    // ===================================================
+  // ===================================================
   // 4. MOTION DETECTION
   // ===================================================
 
@@ -166,15 +176,13 @@ void loop() {
     lastMotionCheck = millis();
 
     // Gyro magnitude with bias removed
-    float gxc = g.gyro.x - GYRO_BIAS_X;
-    float gyc = g.gyro.y - GYRO_BIAS_Y;
-    float gzc = g.gyro.z - GYRO_BIAS_Z;
+    gxc = g.gyro.x - GYRO_BIAS_X;
+    gyc = g.gyro.y - GYRO_BIAS_Y;
+    gzc = g.gyro.z - GYRO_BIAS_Z;
     gyroMag = sqrt(gxc * gxc + gyc * gyc + gzc * gzc);
 
     // Accel change since the previous check
-    accelDelta = havePrev
-      ? fabs(ax - prevAx) + fabs(ay - prevAy) + fabs(az - prevAz)
-      : 0;
+    accelDelta = havePrev? (fabs(ax - prevAx) + fabs(ay - prevAy) + fabs(az - prevAz)): 0;
 
     prevAx = ax;
     prevAy = ay;
@@ -187,17 +195,14 @@ void loop() {
   }
 
   // "In motion" until MOTION_HOLD_MS after the last trigger
-  bool newMotionState =
-    (lastMotionSeen != 0) &&
-    (millis() - lastMotionSeen < MOTION_HOLD_MS);
+  bool newMotionState = (lastMotionSeen != 0) && (millis() - lastMotionSeen < MOTION_HOLD_MS);
 
   // 5. ACTIVITY TIME
   if (newMotionState && !inMotion) { // Movement just started
     motionStartTime = millis();
   }
   if (!newMotionState && inMotion) { // Movement just stopped
-    totalActivityTime +=
-      millis() - motionStartTime;
+    totalActivityTime += millis() - motionStartTime;
   }
   inMotion = newMotionState;
 
