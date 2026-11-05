@@ -24,7 +24,7 @@ void initSerial() {
   println("Available ports:");
   printArray(Serial.list());
   // Change index if your Arduino is not on the first port
-  port = new Serial(this, Serial.list()[0], 115200);
+  port = new Serial(this, Serial.list()[2], 115200);
   port.bufferUntil('\n');
 }
 
@@ -53,6 +53,8 @@ void handleLine(String raw) {
     gyroZ = float(v[12]);
     boardMs = int(v[13]);
     updateStride(gyroX, gyroY, gyroZ, ax, ay, az, boardMs);
+    coolFeed(ax, ay, az, gyroX, gyroY, gyroZ, millis());
+    jumpFeed(ax, ay, az, gyroX, gyroY, gyroZ, boardMs);
   }
   recordSample();
 }

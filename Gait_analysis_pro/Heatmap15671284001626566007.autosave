@@ -1,0 +1,81 @@
+// ── Pressure heatmap ─────────────────────────────────────────────
+// Draws layered circles on top of Left_foot.png / Right_foot.png.
+// Reading < 400        -> nothing (0 = not touching)
+// Every +100 above 400 -> one more ring, outer rings bigger + darker
+
+PImage leftFootImg, rightFootImg;
+PImage image;
+
+final float HM_MIN  = 400;   // first ring appears here
+final float HM_STEP = 100;   // one extra ring every HM_STEP
+final int   HM_MAX_LEVELS = 7;  // 400..1000
+
+// Index 0 = innermost, last = outermost at max pressure
+color[] hmColors = {
+  color(255, 235, 0),    // yellow
+  color(255, 165, 0),    // orange
+  color(255, 110, 0),    // dark orange
+  color(235, 40, 0),     // red
+  color(190, 0, 0),      // dark red
+  color(140, 0, 0),      // darker red
+  color(90, 0, 0)        // maroon
+};
+
+// Sensor positions as fractions of the RIGHT foot image (medial side = left).
+// Order: MF, LF, MM, HEEL. The left foot uses the mirrored x.
+float[][] hmPoints = {
+  {0.30, 0.33},   // MF   medial forefoot
+  {0.72, 0.41},   // LF   lateral forefoot
+  {0.27, 0.54},   // MM   medial midfoot
+  {0.50, 0.86}    // HEEL
+};
+
+// Called from drawSensorAnalysis(); fills the left 1/3 panel.
+void drawHeatmap() {
+  if (leftFootImg == null) {
+    leftFootImg  = loadImage("Left_foot.png");
+    rightFootImg = loadImage("Right_foot.png");
+  }
+  image = leftFootImg; //change this to change which diagram to use
+
+  noStroke(); fill(255);
+  rect(0, 0, DIVX, height);
+
+  float mf   = mfBuf[BUF-1];
+  float lf   = lfBuf[BUF-1];
+  float mm   = mmBuf[BUF-1];
+  float heel = heelBuf[BUF-1];
+
+  // Both feet currently show the same readings.
+  // Pass separate values here once each foot has its own sensors.
+  float footW = DIVX / 2 - 2 * PAD;
+  drawFootHeatmap(image,  PAD, footW, true,  mf, lf, mm, heel);
+}
+
+void drawFootHeatmap(PImage img, float x, float w, boolean mirror,
+                     float mf, float lf, float mm, float heel) {
+  float h = w * img.height / img.width;
+  float y = (height - h) / 2;
+  image(img, x, y, w, h);
+
+  float[] vals = {mf, lf, mm, heel};
+  for (int i = 0; i < vals.length; i++) {
+    float fx = mirror ? 1 - hmPoints[i][0] : hmPoints[i][0];
+    float px = x + fx * w;
+    float py = y + hmPoints[i][1] * h;
+    drawPressureRings(px, py, vals[i], w * 0.035);
+  }
+}
+
+// Concentric rings: biggest/darkest first, smallest/yellow last on top.
+void drawPressureRings(float cx, float cy, float value, float ringStep) {
+  if (value < HM_MIN) return;
+  int levels = min(int((value - HM_MIN) / HM_STEP) + 1, HM_MAX_LEVELS);
+
+  noStroke();
+  for (int i = levels - 1; i >= 0; i--) {
+    fill(hmColors[i]);
+    float r = ringStep * (i + 1);
+    ellipse(cx, cy, r * 2, r * 2);
+  }
+}

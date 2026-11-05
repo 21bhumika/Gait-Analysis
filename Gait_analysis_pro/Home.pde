@@ -1,4 +1,5 @@
-String[] labels = {"Gait Analysis", "Cool Application"};
+String[] labels = {"Gait Analysis", "Cool Application", "Jump Analysis"};
+int[] labelScreen = {1, 2, 4};
 int btnW = 260, btnH = 80, btnGap = 24, btnCols = 2;
 
 void drawHome() {
@@ -49,7 +50,7 @@ void homeClick() {
     int x = (width - (btnCols * btnW + (btnCols - 1) * btnGap)) / 2 + col * (btnW + btnGap);
     int y = 180 + row * (btnH + btnGap);
     if (mouseX >= x && mouseX <= x + btnW && mouseY >= y && mouseY <= y + btnH) {
-      screen = i + 1;
+        screen = labelScreen[i];
     }
   }
 }
