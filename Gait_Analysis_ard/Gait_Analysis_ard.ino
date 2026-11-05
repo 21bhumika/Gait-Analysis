@@ -82,8 +82,8 @@ unsigned long totalActivityTime = 0;
 // TIMING
 unsigned long lastSend = 0;
 
-// 20 ms = 50 Hz (stride length integrates the gyro, 20 Hz is too coarse)
-const unsigned long SEND_PERIOD = 20;
+// 40 ms = 25 Hz (at 20 ms most lines arrived with bytes missing)
+const unsigned long SEND_PERIOD = 40;
 
 // Readings below this are treated as noise (ghost readings were ~4)
 const int FSR_DEADZONE = 15;
@@ -96,10 +96,20 @@ int readFSR(int pin) {
   return (v < 0) ? 0 : v;       // anything under the deadzone becomes 0
 }
 
+char *addFloat(char *p, float value, byte decimals) {
+  dtostrf(value, 1, decimals, p);
+  p += strlen(p);
+  *p++ = ',';
+  return p;
+}
+
 // SETUP
 void setup() {
   Serial.begin(115200);
   Wire.begin();
+#if defined(ARDUINO_ARCH_AVR)
+  Wire.setWireTimeout(3000, true);  // a stuck I2C bus would otherwise freeze the loop
+#endif
 
   // LED setup
   pinMode(LED_MF, OUTPUT);
@@ -217,30 +227,40 @@ void loop() {
   if (millis() - lastSend >= SEND_PERIOD) {
     lastSend = millis();
     // Format:
-    // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds,gx,gy,gz,timeMs
+    // DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySeconds,gx,gy,gz,timeMs*checksum
 
-    Serial.print("DATA,");
+#if defined(ARDUINO_ARCH_AVR)
+    if (Wire.getWireTimeoutFlag()) {
+      Wire.clearWireTimeoutFlag();
+      Serial.println("ERROR: MPU6050 stopped responding (check SDA/SCL wiring)");
+      return;
+    }
+#endif
 
-    Serial.print(fsrMF);    Serial.print(",");
-    Serial.print(fsrLF);    Serial.print(",");
-    Serial.print(fsrMM);    Serial.print(",");
-    Serial.print(fsrHeel);  Serial.print(",");
+    static char line[110];
+    char *p = line;
+    p += sprintf(p, "DATA,%d,%d,%d,%d,", fsrMF, fsrLF, fsrMM, fsrHeel);
 
-    Serial.print(ax, 2);    Serial.print(",");
-    Serial.print(ay, 2);    Serial.print(",");
-    Serial.print(az, 2);    Serial.print(",");
+    p = addFloat(p, ax, 2);
+    p = addFloat(p, ay, 2);
+    p = addFloat(p, az, 2);
 
-    Serial.print(inMotion ? 1 : 0);
-    Serial.print(",");
+    p += sprintf(p, "%d,", inMotion ? 1 : 0);
 
-    Serial.print(currentActivityTime / 1000.0, 2);
-    Serial.print(",");
+    p = addFloat(p, currentActivityTime / 1000.0, 2);
 
-    Serial.print(g.gyro.x - GYRO_BIAS_X, 3);  Serial.print(",");
-    Serial.print(g.gyro.y - GYRO_BIAS_Y, 3);  Serial.print(",");
-    Serial.print(g.gyro.z - GYRO_BIAS_Z, 3);  Serial.print(",");
+    p = addFloat(p, g.gyro.x - GYRO_BIAS_X, 3);
+    p = addFloat(p, g.gyro.y - GYRO_BIAS_Y, 3);
+    p = addFloat(p, g.gyro.z - GYRO_BIAS_Z, 3);
 
-    Serial.println(millis());
+    p += sprintf(p, "%lu", millis());
+
+    // Lets the sketch ignore lines damaged on the way over USB
+    byte checksum = 0;
+    for (char *c = line; c < p; c++) checksum ^= *c;
+    sprintf(p, "*%02X", checksum);
+
+    Serial.println(line);
   }
 
   // // ===================================================

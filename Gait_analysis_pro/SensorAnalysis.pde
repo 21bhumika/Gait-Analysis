@@ -1,10 +1,10 @@
 // Serial / data
-// Arduino format: DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec,gx,gy,gz,timeMs
-// Baud: 115200  |  Rate: 50 Hz (every 20 ms)
+// Arduino format: DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec,gx,gy,gz,timeMs*checksum
+// Baud: 115200  |  Rate: 25 Hz (every 40 ms)
 
 Serial port;
-final int BUF = 500;
-final int SAMPLE_HZ = 50;
+final int BUF = 250;
+final int SAMPLE_HZ = 25;
 float[] mfBuf   = new float[BUF];
 float[] lfBuf   = new float[BUF];
 float[] mmBuf   = new float[BUF];
@@ -32,10 +32,28 @@ void serialEvent(Serial p) {
   handleLine(trim(p.readStringUntil('\n')));
 }
 
+int rejectedLines = 0;
+
+// Damaged lines have fields missing or merged, so reading them shifts every value.
+boolean checksumOk(String raw) {
+  int star = raw.lastIndexOf('*');
+  if (star < 0 || raw.length() != star + 3) return false;
+
+  int sum = 0;
+  for (int i = 0; i < star; i++) sum ^= raw.charAt(i);
+  return raw.substring(star + 1).equalsIgnoreCase(hex(sum, 2));
+}
+
 void handleLine(String raw) {
   if (raw == null || !raw.startsWith("DATA,")) return;
-  String[] v = split(raw, ',');
-  if (v.length < 10) return;
+
+  String[] v = checksumOk(raw) ? split(raw.substring(0, raw.lastIndexOf('*')), ',') : new String[0];
+  if (v.length != 14) {
+    if (++rejectedLines % 100 == 1) {
+      println("Ignored " + rejectedLines + " damaged serial lines (is the latest Arduino code uploaded?)");
+    }
+    return;
+  }
 
   for (int i = 0; i < rawCh.length; i++) rawCh[i] = float(v[i + 1]);
   int[] c = profile.ch;
@@ -47,15 +65,13 @@ void handleLine(String raw) {
   inMotion    = v[8].equals("1");
   activitySec = float(v[9]);
   updateGait(millis());
-  if (v.length >= 14) {
-    gyroX = float(v[10]);
-    gyroY = float(v[11]);
-    gyroZ = float(v[12]);
-    boardMs = int(v[13]);
-    updateStride(gyroX, gyroY, gyroZ, ax, ay, az, boardMs);
-    coolFeed(ax, ay, az, gyroX, gyroY, gyroZ, millis());
-    jumpFeed(ax, ay, az, gyroX, gyroY, gyroZ, boardMs);
-  }
+  gyroX = float(v[10]);
+  gyroY = float(v[11]);
+  gyroZ = float(v[12]);
+  boardMs = int(v[13]);
+  updateStride(gyroX, gyroY, gyroZ, ax, ay, az, boardMs);
+  coolFeed(ax, ay, az, gyroX, gyroY, gyroZ, millis());
+  jumpFeed(ax, ay, az, gyroX, gyroY, gyroZ, boardMs);
   recordSample();
 }
 
