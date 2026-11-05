@@ -157,30 +157,88 @@ void drawGraph(String label, float[] data, int x, int y, int w, int h, color c, 
 
 // Bottom-right: 3×3 info boxes
 void drawInfoPanel() {
-  int rx = DIVX, rw = width - DIVX, ry = DIVY, rh = height - DIVY;
 
-  noStroke(); fill(248);
+  int rx = DIVX;
+  int rw = width - DIVX;
+  int ry = DIVY;
+  int rh = height - DIVY;
+
+  noStroke();
+  fill(248);
   rect(rx, ry, rw, rh);
 
-  fill(60); textAlign(LEFT, TOP); textSize(12);
+  fill(60);
+  textAlign(LEFT, TOP);
+  textSize(12);
   text("Gait Info", rx + PAD, ry + 8);
 
   int bw = (rw - 4 * PAD) / 3;
   int bh = (rh - 3 * PAD - TITLE) / 3;
-  int x0 = rx + PAD,        x1 = x0 + bw + PAD,   x2 = x1 + bw + PAD;
-  int y0 = ry + TITLE,      y1 = y0 + bh + PAD,   y2 = y1 + bh + PAD;
 
-  drawInfoBox("Step Count",           str(stepCount),                      x0, y0, bw, bh);
-  drawInfoBox("Cadence",              cadenceText(),                       x1, y0, bw, bh);
-  drawInfoBox("Gait Profile",         gaitLabel,                           x2, y0, bw, bh);
-  drawInfoBox("Status",               inMotion ? "In Motion" : "Standing", x0, y1, bw, bh);
-  drawInfoBox("Motion Time (this walk)", formatTime(motionMs()),           x1, y1, bw, bh);
-  drawInfoBox("Stride Time",          strideTimeText(),                    x2, y1, bw, bh);
-  String source = gyroStrideM > 0 ? " (from gyro)" : " (est. from height)";
-  drawInfoBox("Stride Length" + source, strideLengthText(),                x0, y2, bw, bh);
-  drawInfoBox(profile.stepWidthCm > 0 ? "Step Width (entered)" : "Step Width",
-              stepWidthText(),                                             x1, y2, bw, bh);
-  drawInfoBox("Walking Speed" + source, speedText(),                       x2, y2, bw, bh);
+  int x0 = rx + PAD;
+  int x1 = x0 + bw + PAD;
+  int x2 = x1 + bw + PAD;
+
+  int y0 = ry + TITLE;
+  int y1 = y0 + bh + PAD;
+  int y2 = y1 + bh + PAD;
+
+  // ROW 1
+  drawInfoBox(
+    "Step Count",
+    str(stepCount),
+    x0, y0, bw, bh
+  );
+
+  drawInfoBox(
+    "Cadence",
+    cadenceText(),
+    x1, y0, bw, bh
+  );
+
+  drawInfoBox(
+    "Gait Profile",
+    gaitLabel,
+    x2, y0, bw, bh
+  );
+
+  // ROW 2
+  drawInfoBox(
+    "Status",
+    inMotion ? "In Motion" : "Standing Still",
+    x0, y1, bw, bh
+  );
+
+  drawInfoBox(
+    "Activity Time (MPU)",
+    formatTime((int)(activitySec * 1000)),
+    x1, y1, bw, bh
+  );
+
+  drawInfoBox(
+    "Step Length",
+    stepLengthText(),
+    x2, y1, bw, bh
+  );
+
+  // ROW 3
+  drawInfoBox(
+    "Stride Length",
+    strideLengthText(),
+    x0, y2, bw, bh
+  );
+
+  drawInfoBox(
+    "Step Width",
+    stepWidthText(),
+    x1, y2, bw, bh
+  );
+
+  drawInfoBox(
+    "Medial Force %",
+    mfpText(),
+    x2, y2, bw, bh
+  );
 }
 
 void drawInfoBox(String label, String value, int x, int y, int w, int h) {
