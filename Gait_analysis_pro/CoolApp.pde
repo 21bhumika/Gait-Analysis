@@ -156,6 +156,7 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
   }
 
   if (caMode == MODE_SPACE) return;
+  caLatNow = caLin[caLat] * caLatSign;
   caFwdNow = caLin[caFwd];
 
   if (caCalState == 1) {
