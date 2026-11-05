@@ -2,16 +2,14 @@
 // One contact = the instrumented foot landing, then lifting.
 // Thresholds were chosen from the walking sessions in recordings/.
 
-final float FOOT_ON  = 300, FOOT_OFF = 150;   // MF, LF, MM
-final float HEEL_ON  = 650, HEEL_OFF = 560;   // heel stays loaded during swing
+final float FOOT_ON  = 400, FOOT_OFF = 280;   // MF, LF, MM (LF can sit near 250 during swing)
+final float HEEL_ON  = 650, HEEL_OFF = 600;   // heel stays loaded during swing
 
 final int MIN_CONTACT_MS    = 350;
 final int GAIT_PAUSE_MS     = 3000;
 final int STEPS_PER_CONTACT = 2;              // sensors are on one foot only
 final int MIN_VOTES         = 3;
 
-final float IN_TOE_BALANCE  =  0.11;
-final float OUT_TOE_BALANCE = -0.08;
 // Medial Force Percentage
 float sessionMedialSum = 0;
 float sessionTotalSum = 0;
@@ -20,6 +18,10 @@ boolean footArmed = false;   // stays false until the first lift, so standing is
 boolean footDown  = false;
 int landTime = 0;
 float peakMF = 0, peakLF = 0, peakMM = 0, peakHeel = 0;
+
+// Measurements from the last finished contact
+float lastHeelPeak = 0, lastForePeak = 0, lastBalance = 0;
+String lastGait = "";
 
 String[] gaitVotes = new String[5];
 int voteCount = 0;
@@ -50,6 +52,7 @@ synchronized void resetGait() {
   lastContactGait = -1;
   gaitMs = new int[GAITS.length];
   stepMfp = -1;
+  lastGait = "";
   resetStride();
   sessionMedialSum = 0;
   sessionTotalSum = 0;
@@ -113,20 +116,26 @@ void liftFoot(int now) {
   footDown = false;
   if (now - landTime >= GAIT_PAUSE_MS) return;   // standing still, not a step
   stepMfp = mfpSum / mfpSamples;
-  String gait = classifyContact();
-  addGaitVote(gait);
+  lastHeelPeak = peakHeel;
+  lastForePeak = max(peakMF, peakLF, peakMM);
+  float medial = max(peakMF, peakMM);
+  lastBalance = (medial - peakLF) / max(medial + peakLF, 1);
+  lastGait = classifyContact();
+
+  addTeachSample(lastHeelPeak, lastForePeak, lastBalance);
+  addGaitVote(lastGait);
   for (int i = 0; i < GAITS.length; i++) {
-    if (GAITS[i].equals(gait)) lastContactGait = i;
+    if (GAITS[i].equals(lastGait)) lastContactGait = i;
   }
 }
 
+// Thresholds belong to the profile because they differ per person and per insole.
 String classifyContact() {
-  if (peakHeel < 300) return "Tip Toe";
-  if (peakMF < 100 && peakMM < 100 && peakLF < 500) return "Heel Walking";
+  if (lastHeelPeak < profile.tipHeelMax) return "Tip Toe";
+  if (lastForePeak < profile.heelForeMax) return "Heel Walking";
 
-  float balance = (peakMF - peakLF) / max(peakMF + peakLF, 1);
-  if (balance > IN_TOE_BALANCE)  return "In-Toe";
-  if (balance < OUT_TOE_BALANCE) return "Out-Toe";
+  if (lastBalance > profile.inToeBalance)  return "In-Toe";
+  if (lastBalance < profile.outToeBalance) return "Out-Toe";
   return "Normal Gait";
 }
 

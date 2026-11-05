@@ -8,6 +8,14 @@ class Profile {
   float heightCm = 170;
   float stepWidthCm = 0;     // 0 = not entered
   float stepLengthCm = 0;
+
+  // Gait rules, see classifyContact()
+  float tipHeelMax = DEFAULT_TIP_HEEL;
+  float heelForeMax = DEFAULT_HEEL_FORE;
+  float inToeBalance = DEFAULT_IN_TOE;
+  float outToeBalance = DEFAULT_OUT_TOE;
+  float[][] taught = new float[GAITS.length][];   // {heel peak, forefoot peak, balance}
+
   Profile(String name, int mf, int lf, int mm, int heel) {
     this.name = name;
     ch = new int[] {mf, lf, mm, heel};
@@ -15,6 +23,10 @@ class Profile {
 }
 
 final String[] REGIONS = {"Medial Forefoot (MF)", "Lateral Forefoot (LF)", "Medial Mid-foot (MM)", "Heel"};
+
+final float DEFAULT_TIP_HEEL = 600, DEFAULT_HEEL_FORE = 500;
+final float DEFAULT_IN_TOE = 0.06, DEFAULT_OUT_TOE = -0.02;
+final int MIN_TEACH_STEPS = 3;
 
 ArrayList<Profile> profiles = new ArrayList<Profile>();
 Profile profile;
@@ -28,9 +40,15 @@ final int PF_NUM_W = 150, PF_NUM2_X = 500;
 final int PF_TABLE_Y = 260, PF_TABLE_ROW = 56;
 final int PF_CHIP_X = 510, PF_CHIP_W = 48, PF_CHIP_GAP = 8, PF_CHIP_H = 32;
 final int PF_BAR_X = 760, PF_BAR_W = 300;
+final int PF_RULES_Y = 498, PF_RULE_FIELD_Y = 532, PF_TEACH_Y = 582;
+final int PF_RULE_W = 150, PF_RULE_GAP = 16, PF_TEACH_W = 134, PF_TEACH_H = 30;
 
-int focusField = 0;   // 0=none 1=name 2=height 3=step width
+int focusField = 0;   // 0=none 1=name 2=height 3=step width 4=step length 5-8=gait rules
 String fieldText = "";
+
+int teachGait = -1;   // index into GAITS while teaching
+ArrayList<float[]> teachSamples = new ArrayList<float[]>();
+String teachMessage = "";
 
 void initProfiles() {
   File f = new File(sketchPath("profiles.json"));
@@ -48,6 +66,7 @@ void initProfiles() {
         p.stepLengthCm = o.hasKey("stepLengthCm")
         ? o.getFloat("stepLengthCm")
         : 0;
+        loadGaitRules(p, o);
         profiles.add(p);
       }
       if (profiles.size() > 0) {
@@ -86,6 +105,7 @@ void saveProfiles() {
     o.setFloat("heightCm", p.heightCm);
     o.setFloat("stepWidthCm", p.stepWidthCm);
     o.setFloat("stepLengthCm", p.stepLengthCm);
+    saveGaitRules(p, o);
     arr.append(o);
   }
   JSONObject saved = new JSONObject();
@@ -94,9 +114,122 @@ void saveProfiles() {
   saveJSONObject(saved, sketchPath("profiles.json"));
 }
 
+void loadGaitRules(Profile p, JSONObject o) {
+  if (!o.hasKey("gaitRules")) return;
+  JSONObject rules = o.getJSONObject("gaitRules");
+  p.tipHeelMax = rules.getFloat("tipHeelMax");
+  p.heelForeMax = rules.getFloat("heelForeMax");
+  p.inToeBalance = rules.getFloat("inToeBalance");
+  p.outToeBalance = rules.getFloat("outToeBalance");
+  for (int i = 0; i < GAITS.length; i++) {
+    if (rules.hasKey(GAITS[i])) p.taught[i] = rules.getJSONArray(GAITS[i]).getFloatArray();
+  }
+}
+
+void saveGaitRules(Profile p, JSONObject o) {
+  JSONObject rules = new JSONObject();
+  rules.setFloat("tipHeelMax", p.tipHeelMax);
+  rules.setFloat("heelForeMax", p.heelForeMax);
+  rules.setFloat("inToeBalance", p.inToeBalance);
+  rules.setFloat("outToeBalance", p.outToeBalance);
+  for (int i = 0; i < GAITS.length; i++) {
+    if (p.taught[i] == null) continue;
+    JSONArray values = new JSONArray();
+    for (float v : p.taught[i]) values.append(v);
+    rules.setJSONArray(GAITS[i], values);
+  }
+  o.setJSONObject("gaitRules", rules);
+}
+
 void selectProfile(Profile p) {
+  cancelTeaching();
   profile = p;
   resetGait();
+  saveProfiles();
+}
+
+// Teaching: walk one gait, and its median measurements become that profile's reference.
+synchronized void startTeaching(int gait) {
+  teachGait = gait;
+  teachSamples.clear();
+  teachMessage = "Walk " + GAITS[gait] + " for at least 6 steps, then press Stop.";
+}
+
+synchronized void addTeachSample(float heel, float fore, float balance) {
+  if (teachGait >= 0) teachSamples.add(new float[] {heel, fore, balance});
+}
+
+synchronized void cancelTeaching() {
+  teachGait = -1;
+  teachSamples.clear();
+  teachMessage = "";
+}
+
+synchronized void finishTeaching() {
+  int gait = teachGait;
+  int steps = teachSamples.size();
+  teachGait = -1;
+  if (steps < MIN_TEACH_STEPS) {
+    teachMessage = GAITS[gait] + " not saved: only " + steps + " steps detected, need at least " + MIN_TEACH_STEPS + ".";
+    return;
+  }
+
+  float[] medians = new float[3];
+  for (int f = 0; f < medians.length; f++) {
+    float[] values = new float[steps];
+    for (int s = 0; s < steps; s++) values[s] = teachSamples.get(s)[f];
+    values = sort(values);
+    medians[f] = steps % 2 == 1 ? values[steps / 2] : (values[steps / 2 - 1] + values[steps / 2]) / 2;
+  }
+  profile.taught[gait] = medians;
+  teachMessage = GAITS[gait] + " saved from " + steps + " steps. " + updateRulesFromTaught(profile);
+  saveProfiles();
+}
+
+// Each limit goes halfway between the two gaits it separates, once both have been taught.
+String updateRulesFromTaught(Profile p) {
+  float[][] t = p.taught;
+  String warning = "";
+
+  if (t[2] != null) {
+    float lowest = lowestTaught(p, 2, 0);
+    if (lowest > t[2][0]) p.tipHeelMax = round((t[2][0] + lowest) / 2);
+    else if (lowest >= 0) warning += "Tip Toe looks like another gait at the heel. ";
+  }
+  if (t[1] != null) {
+    float lowest = lowestTaught(p, 1, 1);
+    if (lowest > t[1][1]) p.heelForeMax = round((t[1][1] + lowest) / 2);
+    else if (lowest >= 0) warning += "Heel Walking looks like another gait at the forefoot. ";
+  }
+  if (t[0] != null && t[3] != null) {
+    if (t[3][2] > t[0][2]) p.inToeBalance = (t[0][2] + t[3][2]) / 2;
+    else warning += "In-Toe looks the same as Normal for this person. ";
+  }
+  if (t[0] != null && t[4] != null) {
+    if (t[4][2] < t[0][2]) p.outToeBalance = (t[0][2] + t[4][2]) / 2;
+    else warning += "Out-Toe looks the same as Normal for this person. ";
+  }
+  return warning;
+}
+
+// Lowest value of one measurement across the other taught gaits, or -1 if there are none.
+float lowestTaught(Profile p, int skip, int measure) {
+  float lowest = -1;
+  for (int i = 0; i < GAITS.length; i++) {
+    if (i == skip || p.taught[i] == null) continue;
+    if (lowest < 0 || p.taught[i][measure] < lowest) lowest = p.taught[i][measure];
+  }
+  return lowest;
+}
+
+void resetGaitRules() {
+  cancelTeaching();
+  profile.tipHeelMax = DEFAULT_TIP_HEEL;
+  profile.heelForeMax = DEFAULT_HEEL_FORE;
+  profile.inToeBalance = DEFAULT_IN_TOE;
+  profile.outToeBalance = DEFAULT_OUT_TOE;
+  profile.taught = new float[GAITS.length][];
+  teachMessage = "Gait rules reset to defaults.";
   saveProfiles();
 }
 
@@ -183,6 +316,51 @@ void drawProfileScreen() {
     fill(70, 120, 220);
     rect(PF_BAR_X, y + 8, map(constrain(v, 0, 1023), 0, 1023, 0, PF_BAR_W), 16, 3);
   }
+
+  drawGaitRules();
+}
+
+int ruleX(int i) {
+  return PF_X + i * (PF_RULE_W + PF_RULE_GAP);
+}
+
+int teachX(int i) {
+  return PF_X + i * (PF_TEACH_W + 8);
+}
+
+void drawGaitRules() {
+  stroke(210); strokeWeight(1);
+  line(PF_X, PF_RULES_Y - 8, width - 30, PF_RULES_Y - 8);
+
+  fill(40); textAlign(LEFT, TOP); textSize(13);
+  text("Gait rules for this profile", PF_X, PF_RULES_Y);
+
+  drawField("Tip Toe: heel peak below", 5, nf(profile.tipHeelMax, 0, 0), ruleX(0), PF_RULE_FIELD_Y, PF_RULE_W);
+  drawField("Heel: forefoot peak below", 6, nf(profile.heelForeMax, 0, 0), ruleX(1), PF_RULE_FIELD_Y, PF_RULE_W);
+  drawField("In-Toe: balance above", 7, nf(profile.inToeBalance, 0, 2), ruleX(2), PF_RULE_FIELD_Y, PF_RULE_W);
+  drawField("Out-Toe: balance below", 8, nf(profile.outToeBalance, 0, 2), ruleX(3), PF_RULE_FIELD_Y, PF_RULE_W);
+  drawPfButton("Reset rules", ruleX(4) - 6, PF_RULE_FIELD_Y, 76, PF_FIELD_H, false);
+
+  for (int i = 0; i < GAITS.length; i++) {
+    boolean teaching = teachGait == i;
+    String label = teaching ? "Stop (" + teachSamples.size() + " steps)" : "Teach " + GAITS[i];
+    drawPfButton(label, teachX(i), PF_TEACH_Y, PF_TEACH_W, PF_TEACH_H, teaching);
+    if (profile.taught[i] != null) {
+      fill(50, 130, 70); textAlign(CENTER, TOP); textSize(10);
+      text("taught", teachX(i) + PF_TEACH_W / 2, PF_TEACH_Y + PF_TEACH_H + 2);
+    }
+  }
+
+  fill(90); textAlign(LEFT, TOP); textSize(11);
+  String hint = teachMessage.length() > 0 ? teachMessage
+    : "If gaits are wrong for someone, teach each gait, starting with Normal. Or type the limits above.";
+  text(hint, PF_X, PF_TEACH_Y + PF_TEACH_H + 18);
+
+  if (lastGait.length() > 0) {
+    text("Last step:  heel " + round(lastHeelPeak) + "   forefoot " + round(lastForePeak)
+         + "   balance " + nf(lastBalance, 0, 2) + "   =  " + lastGait,
+         PF_X, PF_TEACH_Y + PF_TEACH_H + 36);
+  }
 }
 
 int chipX(int c) {
@@ -224,8 +402,40 @@ void profileClick() {
 
   // Back button
   if (mouseOver(PF_LIST_X, 20, 72, 28)) {
+    cancelTeaching();
     screen = 1;
     return;
+  }
+
+  // Gait rule limits
+  if (mouseOver(ruleX(0), PF_RULE_FIELD_Y, PF_RULE_W, PF_FIELD_H)) {
+    focusOn(5, nf(profile.tipHeelMax, 0, 0));
+    return;
+  }
+  if (mouseOver(ruleX(1), PF_RULE_FIELD_Y, PF_RULE_W, PF_FIELD_H)) {
+    focusOn(6, nf(profile.heelForeMax, 0, 0));
+    return;
+  }
+  if (mouseOver(ruleX(2), PF_RULE_FIELD_Y, PF_RULE_W, PF_FIELD_H)) {
+    focusOn(7, nf(profile.inToeBalance, 0, 2));
+    return;
+  }
+  if (mouseOver(ruleX(3), PF_RULE_FIELD_Y, PF_RULE_W, PF_FIELD_H)) {
+    focusOn(8, nf(profile.outToeBalance, 0, 2));
+    return;
+  }
+  if (mouseOver(ruleX(4) - 6, PF_RULE_FIELD_Y, 76, PF_FIELD_H)) {
+    resetGaitRules();
+    return;
+  }
+
+  // Teach a gait
+  for (int i = 0; i < GAITS.length; i++) {
+    if (mouseOver(teachX(i), PF_TEACH_Y, PF_TEACH_W, PF_TEACH_H)) {
+      if (teachGait == i) finishTeaching();
+      else startTeaching(i);
+      return;
+    }
   }
 
   // Select profile
@@ -356,6 +566,28 @@ void commitField() {
       v > 0 && v <= 200 ? v : 0;
   }
 
+  // Gait rules keep their old value if the entry is out of range
+  else if (focusField == 5 || focusField == 6) {
+
+    float v = float(fieldText);
+
+    if (v >= 0 && v <= 1023) {
+      if (focusField == 5) profile.tipHeelMax = v;
+      else profile.heelForeMax = v;
+    }
+  }
+
+  // Balance limits can be on either side of 0, depending on the person's normal walk
+  else if (focusField == 7 || focusField == 8) {
+
+    float v = float(fieldText);
+
+    if (v >= -1 && v <= 1) {
+      if (focusField == 7) profile.inToeBalance = v;
+      else profile.outToeBalance = v;
+    }
+  }
+
   if (focusField != 0) {
     saveProfiles();
   }
@@ -387,7 +619,7 @@ void profileKey() {
     boolean numeric = focusField != 1;
 
     boolean allowed = numeric
-      ? (key >= '0' && key <= '9') || key == '.'
+      ? (key >= '0' && key <= '9') || key == '.' || (key == '-' && focusField >= 7)
       : fieldText.length() < 24;
 
     if (allowed) {
