@@ -1,387 +1,292 @@
-/*
- * JUMP ANALYSIS
- *   Vertical:   flight time from the pressure sensors (all unloaded) -> height = g*t^2/8, takeoff speed = g*t/2
- *   Horizontal: horizontal takeoff speed from integrating the push-off (stillness -> liftoff) x flight time.
- *               Below JUMP_HORIZ_MIN_M it is reported as 0.
- *   Stance:     pressure pattern in the 250 ms before liftoff (takeoff) and the first 150 ms after
- *               touchdown (landing), plus which sensor touches first.
- * Use: stand still for ~1 s, jump, land on both feet, stay still.
- */
-
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// ---------- tunables ----------
-final int   JUMP_MIN_FLIGHT_MS  = 120;   // foot unloaded at least this long = a jump (walking swings were < ~65 ms)
-final int   JUMP_MAX_FLIGHT_MS  = 1200;  // longer than this = the foot was just lifted
-final int   JUMP_PRE_WINDOW_MS  = 250;   // takeoff stance window before liftoff
-final int   JUMP_LAND_WINDOW_MS = 150;   // landing stance window after touchdown
-final float JUMP_MIN_IMPACT     = 14;    // m/s^2 peak accel at landing (rejects gentle foot lifts)
-final float JUMP_HORIZ_MIN_M    = 0.10;  // below this the horizontal distance is reported as 0
-final float JUMP_BALANCE        = 0.20;  // medial/lateral bias threshold
-final int   JUMP_MAX_KEEP       = 12;
-final int   JN = 128;                    // recent-sample ring (about 2.5 s at 50 Hz)
+final int   JUMP_HOLD_STILL_MS  = 1500;
+final int   JUMP_PROMPT_MS      = 5000;
+final int   JUMP_RESULT_MS      = 3000;
+final int   JUMP_MIN_FLIGHT_MS  = 120;
+final int   JUMP_MAX_FLIGHT_MS  = 1000;
+final int   JUMP_LAND_WINDOW_MS = 200;
+final float JUMP_MIN_IMPACT     = 14;
+final int   JUMP_LIST_SIZE      = 5;
+final int   JUMP_PUSH_WINDOW_MS = 150;
+final int   JUMP_SAME_TIME_MS   = 30;
+
+final int J_STILL = 0, J_PROMPT = 1, J_AIR = 2, J_LANDING = 3, J_RESULT = 4;
 
 class JumpResult {
-  int n, flightMs, pushMs;
-  float heightCm, v0, speed, horizM, impactG;
-  boolean horizOK;
-  String takeoffLabel, landLabel;
-  float[] takeoffPads, landPads;     // MF, LF, MM, HEEL peaks for the heatmaps
+  float heightCm, flightS;
+  String takeoffStance, landingStance;
+
+  JumpResult(float flightS, String takeoffStance, String landingStance) {
+    this.flightS = flightS;
+    this.takeoffStance = takeoffStance;
+    this.landingStance = landingStance;
+    heightCm = 100 * GRAVITY * flightS * flightS / 8;
+  }
 }
 
 CopyOnWriteArrayList<JumpResult> jumps = new CopyOnWriteArrayList<JumpResult>();
-int jumpCount = 0;
 
-// ---------- state ----------
-int jState = 0;                 // 0 on the ground, 1 foot off the ground, 2 capturing the landing
-int jOffT = 0, jTouchT = 0, jLastT = -1;
-float[] jPrePeaks = new float[4];
-float[] jTakeVel = new float[3];
-boolean jTakeValid = false;
-int jPushMs = 0;
-String jNote = "Stand still for a second, then jump.";
+int jState = J_STILL;
+int jStateT = 0;
+int jStillSince = -1;
+int jLastT = -1;
+float jTakeoffT = 0, jTouchT = 0;
+float jLandPeak = 0;
+String jMessage = "";
+float[] jPrev = new float[4];
+String jTakeoffStance = "";
+float[] jFirstTouch = new float[4];
 
-float[] jQ = null;              // foot orientation, null until the foot has been still
-float[] jVel = new float[3];
-float[] jStillAcc = new float[3];
-float[] jLastGyro = new float[3];
-int jStillCount = 0, jLastStillT = -1;
-
-// ring of recent samples
-int[]     jrT = new int[JN];
-float[][] jrP = new float[JN][4];   // MF, LF, MM, HEEL
-float[]   jrA = new float[JN];      // |accel|
-int jrHead = 0, jrCount = 0;
-
-void jrPush(int t, float mf, float lf, float mm, float heel, float acc) {
-  jrT[jrHead] = t;
-  jrP[jrHead][0] = mf; jrP[jrHead][1] = lf; jrP[jrHead][2] = mm; jrP[jrHead][3] = heel;
-  jrA[jrHead] = acc;
-  jrHead = (jrHead + 1) % JN;
-  jrCount = min(jrCount + 1, JN);
+float jumpBest() {
+  float best = 0;
+  for (JumpResult j : jumps) best = max(best, j.heightCm);
+  return best;
 }
 
-int jrIdx(int k) { return (jrHead - 1 - k + 2 * JN) % JN; }   // k = 0 is the newest sample
+void jGoTo(int state, int t) {
+  jState = state;
+  jStateT = t;
+  jStillSince = -1;
+}
 
-float[] jrPeaks(int tFrom, int tTo) {
-  float[] p = new float[4];
-  for (int k = 0; k < jrCount; k++) {
-    int i = jrIdx(k);
-    if (jrT[i] < tFrom) break;
-    if (jrT[i] > tTo) continue;
-    for (int s = 0; s < 4; s++) p[s] = max(p[s], jrP[i][s]);
+void jReject(String why, int t) {
+  jMessage = why;
+  jGoTo(J_RESULT, t);
+}
+
+float jLiftTime(float[] now, int t, float dtMs) {
+  float[] limit = {FOOT_OFF, FOOT_OFF, FOOT_OFF, HEEL_OFF};
+  float latest = t - dtMs;
+  for (int s = 0; s < 4; s++) {
+    if (jPrev[s] < limit[s]) continue;
+    latest = max(latest, t - dtMs + dtMs * (jPrev[s] - limit[s]) / max(jPrev[s] - now[s], 1));
   }
-  return p;
+  return latest;
 }
 
-float jrPeakAccel(int tFrom, int tTo) {
-  float peak = 0;
-  for (int k = 0; k < jrCount; k++) {
-    int i = jrIdx(k);
-    if (jrT[i] < tFrom) break;
-    if (jrT[i] > tTo) continue;
-    peak = max(peak, jrA[i]);
+float jTouchTime(float[] now, int t, float dtMs) {
+  float[] limit = {FOOT_ON, FOOT_ON, FOOT_ON, HEEL_ON};
+  float earliest = t;
+  for (int s = 0; s < 4; s++) {
+    if (now[s] <= limit[s]) continue;
+    earliest = min(earliest, t - dtMs + dtMs * (limit[s] - jPrev[s]) / max(now[s] - jPrev[s], 1));
   }
-  return peak;
+  return earliest;
 }
 
-// ---------- called for every serial sample (needs the gyro fields) ----------
+String takeoffStance() {
+  int samples = max(1, JUMP_PUSH_WINDOW_MS * SAMPLE_HZ / 1000);
+  boolean fore = false, heel = false;
+  for (int k = 1; k <= samples; k++) {
+    int i = BUF - 1 - k;
+    fore = fore || mfBuf[i] > FOOT_ON || lfBuf[i] > FOOT_ON || mmBuf[i] > FOOT_ON;
+    heel = heel || heelBuf[i] > HEEL_ON;
+  }
+  return fore && heel ? "Flat foot" : fore ? "Forefoot" : heel ? "Heel" : "Light";
+}
+
+void noteTouches(float[] now, int t, float dtMs) {
+  float[] limit = {FOOT_ON, FOOT_ON, FOOT_ON, HEEL_ON};
+  for (int s = 0; s < 4; s++) {
+    if (jFirstTouch[s] >= 0 || now[s] <= limit[s]) continue;
+    jFirstTouch[s] = t - dtMs + dtMs * (limit[s] - jPrev[s]) / max(now[s] - jPrev[s], 1);
+  }
+}
+
+String landingStance() {
+  float fore = -1;
+  for (int s = 0; s < 3; s++) {
+    if (jFirstTouch[s] >= 0 && (fore < 0 || jFirstTouch[s] < fore)) fore = jFirstTouch[s];
+  }
+  float heel = jFirstTouch[3];
+  if (fore < 0) return "Heel first";
+  if (heel < 0) return "Forefoot first";
+  if (abs(heel - fore) <= JUMP_SAME_TIME_MS) return "Flat foot";
+  return heel < fore ? "Heel first" : "Forefoot first";
+}
+
 synchronized void jumpFeed(float fx, float fy, float fz, float wx, float wy, float wz, int t) {
-  float acc = sqrt(fx * fx + fy * fy + fz * fz);
-  float mf = mfBuf[BUF-1], lf = lfBuf[BUF-1], mm = mmBuf[BUF-1], heel = heelBuf[BUF-1];
-  jrPush(t, mf, lf, mm, heel, acc);
-  boolean off = mf < FOOT_OFF && lf < FOOT_OFF && mm < FOOT_OFF && heel < HEEL_OFF;
+  if (screen != 4) return;
 
-  float dt = jLastT < 0 ? 0 : (t - jLastT) / 1000.0;
-  boolean gap = jLastT < 0 || dt <= 0 || dt > 0.2;
+  float[] now = {mfBuf[BUF-1], lfBuf[BUF-1], mmBuf[BUF-1], heelBuf[BUF-1]};
+  float dtMs = t - jLastT;
+  boolean firstOrGap = jLastT < 0 || dtMs <= 0 || dtMs > 200;
   jLastT = t;
 
-  if (gap) {                              // first sample, or the stream stalled
-    jResetReference();
-    jState = 0;
-    jLastGyro = new float[] {wx, wy, wz};
+  if (firstOrGap) {
+    jMessage = "";
+    jGoTo(J_STILL, t);
+    jPrev = now;
     return;
   }
 
-  if (jState == 0) {
-    jGround(fx, fy, fz, wx, wy, wz, dt, t, acc);
-    if (off) jTakeoff(t);
-  } else if (jState == 1) {
-    if (!off) jTouchdown(t);
-    else if (t - jOffT > JUMP_MAX_FLIGHT_MS) {
-      jState = 0;
-      jNote = "Ignored: foot off the ground for more than " + JUMP_MAX_FLIGHT_MS + " ms.";
-      jResetReference();
-    }
-  } else if (jState == 2) {
-    if (t - jTouchT >= JUMP_LAND_WINDOW_MS) jFinish();
-  }
-  jLastGyro = new float[] {wx, wy, wz};
-}
-
-void jResetReference() {
-  jQ = null;
-  jStillCount = 0;
-  jLastStillT = -1;
-  jVel = new float[3];
-}
-
-// On the ground: while still, set the orientation reference; otherwise integrate the push-off
-void jGround(float fx, float fy, float fz, float wx, float wy, float wz, float dt, int t, float acc) {
+  boolean off = now[0] < FOOT_OFF && now[1] < FOOT_OFF && now[2] < FOOT_OFF && now[3] < HEEL_OFF;
+  boolean on  = now[0] > FOOT_ON  || now[1] > FOOT_ON  || now[2] > FOOT_ON  || now[3] > HEEL_ON;
+  float acc = sqrt(fx * fx + fy * fy + fz * fz);
   float rate = sqrt(wx * wx + wy * wy + wz * wz);
-  jStillCount = (rate < STILL_GYRO && abs(acc - GRAVITY) < STILL_ACCEL) ? jStillCount + 1 : 0;
 
-  if (jStillCount >= STILL_SAMPLES) {
-    if (jStillCount == STILL_SAMPLES) jStillAcc = new float[3];
-    jStillAcc[0] += fx; jStillAcc[1] += fy; jStillAcc[2] += fz;
-    jQ = levelQuaternion(jStillAcc);
-    jVel = new float[3];
-    jLastStillT = t;
-  } else if (jQ != null) {
-    float mx = (wx + jLastGyro[0]) / 2, my = (wy + jLastGyro[1]) / 2, mz = (wz + jLastGyro[2]) / 2;
-    float r2 = sqrt(mx * mx + my * my + mz * mz);
-    if (r2 > 0) {
-      float half = r2 * dt / 2;
-      float s = sin(half) / r2;
-      jQ = normalizedQ(multiplyQ(jQ, new float[] {cos(half), mx * s, my * s, mz * s}));
+  if (jState == J_STILL) {
+    boolean still = on && rate < STILL_GYRO && abs(acc - GRAVITY) < STILL_ACCEL;
+    if (!still) jStillSince = -1;
+    else if (jStillSince < 0) jStillSince = t;
+    else if (t - jStillSince >= JUMP_HOLD_STILL_MS) {
+      jMessage = "";
+      jGoTo(J_PROMPT, t);
     }
-    float[] world = rotateByQ(jQ, fx, fy, fz);
-    world[2] -= GRAVITY;
-    for (int i = 0; i < 3; i++) jVel[i] += world[i] * dt;
+  } else if (jState == J_PROMPT) {
+    if (off) {
+      jTakeoffT = jLiftTime(now, t, dtMs);
+      jTakeoffStance = takeoffStance();
+      jGoTo(J_AIR, t);
+    } else if (t - jStateT > JUMP_PROMPT_MS) {
+      jMessage = "No jump seen";
+      jGoTo(J_STILL, t);
+    }
+  } else if (jState == J_AIR) {
+    if (on) {
+      jTouchT = jTouchTime(now, t, dtMs);
+      jFirstTouch = new float[] {-1, -1, -1, -1};
+      noteTouches(now, t, dtMs);
+      jLandPeak = acc;
+      jGoTo(J_LANDING, t);
+    } else if (t - jTakeoffT > JUMP_MAX_FLIGHT_MS) {
+      jReject("Foot was off the ground too long", t);
+    }
+  } else if (jState == J_LANDING) {
+    jLandPeak = max(jLandPeak, acc);
+    noteTouches(now, t, dtMs);
+    if (t - jStateT >= JUMP_LAND_WINDOW_MS) finishJump(t);
+  } else if (jState == J_RESULT) {
+    if (t - jStateT >= JUMP_RESULT_MS) jGoTo(J_STILL, t);
   }
+  jPrev = now;
 }
 
-void jTakeoff(int t) {
-  float[] pre = jrPeaks(t - JUMP_PRE_WINDOW_MS, t);
-  boolean wasLoaded = pre[0] > FOOT_ON || pre[1] > FOOT_ON || pre[2] > FOOT_ON || pre[3] > HEEL_ON;
-  if (!wasLoaded) return;                 // foot was not on the ground, so this is not a takeoff
-
-  jState = 1;
-  jOffT = t;
-  jPrePeaks = pre;
-  jTakeValid = jQ != null && jLastStillT >= 0 && t - jLastStillT <= 2000;
-  jTakeVel = new float[] {jVel[0], jVel[1], jVel[2]};
-  jPushMs = jTakeValid ? t - jLastStillT : 0;
-}
-
-void jTouchdown(int t) {
-  int flight = t - jOffT;
-  if (flight < JUMP_MIN_FLIGHT_MS) {
-    jNote = "Ignored: flight " + flight + " ms (needs " + JUMP_MIN_FLIGHT_MS + ").";
-    jState = 0;
-    jResetReference();
+void finishJump(int t) {
+  float flightMs = jTouchT - jTakeoffT;
+  if (flightMs < JUMP_MIN_FLIGHT_MS || jLandPeak < JUMP_MIN_IMPACT) {
+    jReject("That didn't look like a jump", t);
     return;
   }
-  jTouchT = t;
-  jState = 2;
+  jMessage = "";
+  jumps.add(new JumpResult(flightMs / 1000, jTakeoffStance, landingStance()));
+  jGoTo(J_RESULT, t);
 }
 
-void jFinish() {
-  jState = 0;
-  int flightMs = jTouchT - jOffT;
-  float peakAcc = jrPeakAccel(jTouchT - 40, jTouchT + JUMP_LAND_WINDOW_MS);
-  if (peakAcc < JUMP_MIN_IMPACT) {
-    jNote = "Ignored: landing impact only " + nf(peakAcc / GRAVITY, 0, 1) + " g (foot lift?).";
-    jResetReference();
-    return;
-  }
-
-  JumpResult r = new JumpResult();
-  r.n = ++jumpCount;
-  r.flightMs = flightMs;
-  float tf = flightMs / 1000.0;
-  r.heightCm = 100 * GRAVITY * tf * tf / 8;
-  r.v0 = GRAVITY * tf / 2;
-
-  float vh = sqrt(jTakeVel[0] * jTakeVel[0] + jTakeVel[1] * jTakeVel[1]);
-  float vz = jTakeVel[2];
-  float dist = jTakeValid ? vh * tf : 0;
-  r.horizOK = jTakeValid && vz > 0.5 * r.v0 && vz < 1.6 * r.v0;   // vertical speed from the push-off should match g*t/2
-  r.horizM = dist < JUMP_HORIZ_MIN_M ? 0 : dist;
-  r.speed = sqrt(r.v0 * r.v0 + (r.horizM > 0 ? vh * vh : 0));
-  r.pushMs = jPushMs;
-  r.impactG = peakAcc / GRAVITY;
-
-  r.takeoffPads = jPrePeaks;
-  r.takeoffLabel = jTakeoffLabel(jPrePeaks);
-  r.landPads = jrPeaks(jTouchT - 20, jTouchT + JUMP_LAND_WINDOW_MS);
-  r.landLabel = jLandingLabel(jTouchT - 40, jTouchT + JUMP_LAND_WINDOW_MS, r.landPads);
-
-  jumps.add(r);
-  while (jumps.size() > JUMP_MAX_KEEP) jumps.remove(0);
-  jNote = "Jump " + r.n + " recorded.";
-  jResetReference();
-}
-
-// ---------- stance labels ----------
-String jBalanceText(float[] p) {
-  if (p[0] + p[1] < FOOT_ON) return "";
-  float b = (p[0] - p[1]) / max(p[0] + p[1], 1);     // MF is medial, LF is lateral
-  if (b > JUMP_BALANCE)  return " (medial)";
-  if (b < -JUMP_BALANCE) return " (lateral)";
-  return "";
-}
-
-String jTakeoffLabel(float[] p) {
-  boolean fore = p[0] > FOOT_ON || p[1] > FOOT_ON || p[2] > FOOT_ON;
-  boolean heel = p[3] > HEEL_ON;
-  String base = (fore && heel) ? "Flat foot" : fore ? "Forefoot" : heel ? "Heel" : "Light";
-  return base + jBalanceText(p);
-}
-
-// Which part of the foot touches first, from the order the sensors pass their contact level
-String jLandingLabel(int tFrom, int tTo, float[] peaks) {
-  int[] first = { Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE };
-  for (int k = jrCount - 1; k >= 0; k--) {                // oldest to newest
-    int i = jrIdx(k);
-    if (jrT[i] < tFrom) continue;
-    if (jrT[i] > tTo) break;
-    for (int s = 0; s < 4; s++) {
-      float thr = (s == 3) ? HEEL_ON : FOOT_ON;
-      if (jrP[i][s] > thr && first[s] == Integer.MAX_VALUE) first[s] = jrT[i];
-    }
-  }
-  int earliest = min(min(first[0], first[1]), min(first[2], first[3]));
-  if (earliest == Integer.MAX_VALUE) return "Light";
-  boolean heel = first[3] - earliest <= 20;
-  boolean fore = min(first[0], first[1]) - earliest <= 20;
-  boolean mid  = first[2] - earliest <= 20;
-  String base = (heel && (fore || mid)) ? "Flat" : heel ? "Heel-first" : fore ? "Forefoot-first" : "Mid-foot first";
-  return base + jBalanceText(peaks);
-}
-
-String jHorizText(JumpResult r) {
-  if (r.horizM == 0) return "0.00 m";
-  return "~" + nf(r.horizM, 0, 2) + " m" + (r.horizOK ? "" : " ?");
-}
-
-// ---------- screen ----------
-void jumpEnsureImages() {
-  if (rightFootImg == null) {
-    leftFootImg  = loadImage("Left_foot.png");
-    rightFootImg = loadImage("Right_foot.png");
-  }
-}
-
-// Same drawing as the Sensor Analysis heatmap, at a chosen position
-void drawJumpFoot(float x, float y, float w, float[] v) {
-  PImage img = rightFootImg;
-  float h = w * img.height / img.width;
-  image(img, x, y, w, h);
-  for (int i = 0; i < 4; i++) {
-    float px = x + (1 - hmPoints[i][0]) * w;     // mirrored, as in drawHeatmap()
-    float py = y + hmPoints[i][1] * h;
-    drawPressureRings(px, py, v[i], w * 0.035);
-  }
-}
+final int J_BTN_Y = 12, J_BTN_H = 28, J_BACK_W = 72, J_CLEAR_W = 72;
 
 void drawJumpAnalysis() {
-  jumpEnsureImages();
   background(242);
 
-  JumpResult r = jumps.isEmpty() ? null : jumps.get(jumps.size() - 1);
-  float[] tp = r == null ? new float[4] : r.takeoffPads;
-  float[] lp = r == null ? new float[4] : r.landPads;
+  fill(30); textAlign(CENTER, CENTER); textSize(20);
+  text("Jump Height", width / 2, J_BTN_Y + J_BTN_H / 2);
 
-  // ---- left panel: pressure at takeoff and landing ----
-  noStroke(); fill(255);
-  rect(0, 0, DIVX, height);
-  stroke(200); strokeWeight(1);
-  line(DIVX, 0, DIVX, height);
+  drawJumpPrompt(30, 56, width - 60, 210);
 
-  fill(30); textAlign(LEFT, TOP); textSize(14);
-  text("Jump Analysis", PAD, 8);
+  JumpResult last = jumps.isEmpty() ? null : jumps.get(jumps.size() - 1);
 
-  float footW = 140;
-  float fx1 = 35, fx2 = DIVX - 35 - footW, fy = 62;
-  fill(60); textAlign(CENTER, TOP); textSize(12);
-  text("TAKEOFF", fx1 + footW / 2, 40);
-  text("LANDING", fx2 + footW / 2, 40);
-  drawJumpFoot(fx1, fy, footW, tp);
-  drawJumpFoot(fx2, fy, footW, lp);
-  float fh = footW * rightFootImg.height / rightFootImg.width;
-  fill(30); textSize(13);
-  text(r == null ? "—" : r.takeoffLabel, fx1 + footW / 2, fy + fh + 10);
-  text(r == null ? "—" : r.landLabel,    fx2 + footW / 2, fy + fh + 10);
-
-  fill(130); textAlign(LEFT, TOP); textSize(10);
-  text("Rings show the peak pressure of the latest jump.\n1) Stand still for about 1 s\n2) Jump and land on both feet\n3) Stay still for a moment",
-       PAD * 2, height - 70);
-
-  // ---- right panel: latest jump ----
-  int rx = DIVX, rw = width - DIVX;
-  int bw = (rw - 4 * PAD) / 3, bh = 93;
-  int bxa = rx + PAD, bxb = bxa + bw + PAD, bxc = bxb + bw + PAD;
-  int bya = 44, byb = bya + bh + PAD, byc = byb + bh + PAD;
-
-  float best = -1;
-  for (JumpResult j : jumps) best = max(best, j.heightCm);
-
-  drawInfoBox("Jump Height (vertical)", r == null ? "—" : nf(r.heightCm, 0, 1) + " cm", bxa, bya, bw, bh);
-  drawInfoBox("Flight Time",            r == null ? "—" : r.flightMs + " ms",           bxb, bya, bw, bh);
-  drawInfoBox("Takeoff Speed",          r == null ? "—" : nf(r.speed, 0, 2) + " m/s",   bxc, bya, bw, bh);
-  drawInfoBox("Horizontal Distance",    r == null ? "—" : jHorizText(r),                bxa, byb, bw, bh);
-  drawInfoBox("Push-off Time",          (r == null || r.pushMs == 0) ? "—" : r.pushMs + " ms", bxb, byb, bw, bh);
-  drawInfoBox("Landing Impact (peak)",  r == null ? "—" : nf(r.impactG, 0, 1) + " g",   bxc, byb, bw, bh);
-  drawInfoBox("Takeoff Stance",         r == null ? "—" : r.takeoffLabel,               bxa, byc, bw, bh);
-  drawInfoBox("Landing Stance",         r == null ? "—" : r.landLabel,                  bxb, byc, bw, bh);
-  drawInfoBox("Jumps / Best",           jumps.size() + " / " + (best < 0 ? "—" : nf(best, 0, 1) + " cm"), bxc, byc, bw, bh);
-
-  // ---- status ----
-  String state = jState == 0 ? (jQ == null ? "Ready. Stand still, then jump." : "Ready. Reference set, jump when you like.")
-               : jState == 1 ? "AIRBORNE  " + nf((jLastT - jOffT) / 1000.0, 0, 2) + " s"
-               :               "Landing...";
-  fill(50); textAlign(LEFT, CENTER); textSize(13);
-  text("State:  " + state, bxa, 352);
-  fill(70, 120, 220);
-  text(jNote, bxa, 372);
-
-  // ---- table of this session's jumps ----
-  int tx = rx + PAD;
-  int[] col = { 0, 30, 100, 170, 240, 310, 380, 540 };
-  String[] head = { "#", "Height", "Flight", "Horiz.", "Speed", "Impact", "Takeoff", "Landing" };
-  fill(130); textAlign(LEFT, TOP); textSize(11);
-  for (int c = 0; c < head.length; c++) text(head[c], tx + col[c], 396);
-  stroke(215); line(tx, 412, width - PAD, 412);
-
-  int n = jumps.size();
-  for (int k = 0; k < n; k++) {
-    JumpResult j = jumps.get(n - 1 - k);
-    int ry = 418 + k * 20;
-    if (j.heightCm == best) {
-      noStroke(); fill(255, 245, 200);
-      rect(tx - 4, ry - 2, rw - 2 * PAD + 8, 18, 3);
-    }
-    fill(40); textAlign(LEFT, TOP); textSize(11);
-    text(j.n,                              tx + col[0], ry);
-    text(nf(j.heightCm, 0, 1) + " cm",     tx + col[1], ry);
-    text(j.flightMs + " ms",               tx + col[2], ry);
-    text(jHorizText(j),                    tx + col[3], ry);
-    text(nf(j.speed, 0, 2) + " m/s",       tx + col[4], ry);
-    text(nf(j.impactG, 0, 1) + " g",       tx + col[5], ry);
-    text(j.takeoffLabel,                   tx + col[6], ry);
-    text(j.landLabel,                      tx + col[7], ry);
+  int cy = 282, ch = 396;
+  fill(255); stroke(210); strokeWeight(1);
+  rect(30, cy, 640, ch, 10);
+  fill(110); textAlign(CENTER, TOP); textSize(18);
+  text("Last jump", 350, cy + 22);
+  fill(20); textAlign(CENTER, CENTER); textSize(120);
+  text(last == null ? "—" : round(last.heightCm) + " cm", 350, cy + 130);
+  if (last != null) {
+    fill(110); textAlign(CENTER, TOP); textSize(18);
+    text(nf(last.flightS, 0, 2) + " s in the air", 350, cy + 212);
   }
 
-  // ---- buttons ----
-  fill(230); stroke(180); strokeWeight(1);
-  rect(DIVX + PAD, PAD - 4, 68, 24, 4);
-  rect(DIVX + PAD + 78, PAD - 4, 68, 24, 4);
-  fill(60); textAlign(CENTER, CENTER); textSize(11);
-  text("← Back", DIVX + PAD + 34, PAD + 8);
-  text("Clear",  DIVX + PAD + 78 + 34, PAD + 8);
+  stroke(225); line(55, cy + 262, 645, cy + 262);
+  drawJumpStance("Takeoff stance", last == null ? "—" : last.takeoffStance, 190, cy + 280);
+  drawJumpStance("Landing stance", last == null ? "—" : last.landingStance, 510, cy + 280);
+
+  fill(255); stroke(210); strokeWeight(1);
+  rect(690, cy, 380, ch, 10);
+  fill(110); textAlign(CENTER, TOP); textSize(18);
+  text("Best", 880, cy + 22);
+  fill(20); textAlign(CENTER, TOP); textSize(64);
+  text(jumps.isEmpty() ? "—" : round(jumpBest()) + " cm", 880, cy + 50);
+
+  stroke(225); line(715, cy + 142, 1045, cy + 142);
+  fill(110); textAlign(LEFT, TOP); textSize(16);
+  text("Recent", 715, cy + 156);
+  int n = jumps.size();
+  for (int k = 0; k < min(n, JUMP_LIST_SIZE); k++) {
+    JumpResult j = jumps.get(n - 1 - k);
+    fill(40); textAlign(LEFT, TOP); textSize(22);
+    text(round(j.heightCm) + " cm", 715, cy + 186 + k * 38);
+    fill(130); textAlign(RIGHT, TOP); textSize(16);
+    text(nf(j.flightS, 0, 2) + " s", 1045, cy + 190 + k * 38);
+  }
+
+  drawPfButton("← Back", 30, J_BTN_Y, J_BACK_W, J_BTN_H, false);
+  drawPfButton("Clear", 30 + J_BACK_W + 10, J_BTN_Y, J_CLEAR_W, J_BTN_H, false);
   drawRecordBtn();
+}
+
+void drawJumpStance(String label, String value, int cx, int y) {
+  fill(110); textAlign(CENTER, TOP); textSize(16);
+  text(label, cx, y);
+  fill(20); textSize(34);
+  text(value, cx, y + 30);
+}
+
+void drawJumpPrompt(int x, int y, int w, int h) {
+  String title, sub = "";
+  color bg;
+
+  if (jLastT < 0) {
+    title = "Waiting for sensors";
+    sub = "Check the insole is connected";
+    bg = color(120);
+  } else if (jState == J_STILL) {
+    title = "Stand still";
+    sub = jMessage.length() > 0 ? jMessage + ". Feet flat, stand still to try again"
+                                : "Stand on both feet and wait for the signal";
+    bg = color(225, 150, 40);
+  } else if (jState == J_PROMPT) {
+    title = "JUMP!";
+    sub = "Jump straight up and land on both feet";
+    bg = color(40, 165, 80);
+  } else if (jState == J_AIR || jState == J_LANDING) {
+    title = "In the air...";
+    bg = color(70, 120, 220);
+  } else if (jMessage.length() > 0) {
+    title = "Try again";
+    sub = jMessage;
+    bg = color(200, 70, 60);
+  } else {
+    title = "Nice jump!";
+    sub = "Get ready for the next one";
+    bg = color(70, 120, 220);
+  }
+
+  noStroke(); fill(bg);
+  rect(x, y, w, h, 12);
+
+  fill(255); textAlign(CENTER, CENTER); textSize(84);
+  text(title, x + w / 2, y + h / 2 - 22);
+  textSize(22);
+  text(sub, x + w / 2, y + h - 40);
+
+  if (jState == J_STILL && jStillSince >= 0) {
+    float progress = constrain((jLastT - jStillSince) / float(JUMP_HOLD_STILL_MS), 0, 1);
+    fill(255, 90);
+    rect(x + 30, y + h - 16, w - 60, 8, 4);
+    fill(255);
+    rect(x + 30, y + h - 16, (w - 60) * progress, 8, 4);
+  }
 }
 
 void jumpClick() {
   if (recordBtnHit()) {
     toggleRecording();
-  } else if (mouseOver(DIVX + PAD, PAD - 4, 68, 24)) {
+  } else if (mouseOver(30, J_BTN_Y, J_BACK_W, J_BTN_H)) {
     stopRecording();
     screen = 0;
-  } else if (mouseOver(DIVX + PAD + 78, PAD - 4, 68, 24)) {
+  } else if (mouseOver(30 + J_BACK_W + 10, J_BTN_Y, J_CLEAR_W, J_BTN_H)) {
     jumps.clear();
-    jumpCount = 0;
-    jNote = "Cleared.";
   }
 }
