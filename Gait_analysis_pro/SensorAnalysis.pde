@@ -82,6 +82,7 @@ void drawSensorAnalysis() {
   drawFSRGraphs();
   drawInfoPanel();
   drawGaitTimes();
+  drawMfp();
   drawSABackBtn();
   drawRecordBtn();
   drawProfileBtn();
@@ -252,6 +253,22 @@ void drawInfoBox(String label, String value, int x, int y, int w, int h) {
   float fit = textWidth(value);
   if (fit > w - 16) textSize(34 * (w - 16) / fit);
   text(value, x + 8, y + h - 6);
+}
+
+// Left panel, above the foot: Medial Force Percentage
+void drawMfp() {
+  int x = PAD * 3, right = DIVX - PAD * 3, y = 48;
+
+  fill(60); textAlign(LEFT, TOP); textSize(12);
+  text("Medial Force (MFP)", x, y);
+
+  fill(30); textSize(34);
+  text(round(mfpLive) + "%", x, y + 20);
+
+  fill(130); textAlign(RIGHT, TOP); textSize(10);
+  text("Last step average", right, y + 22);
+  fill(30); textSize(20);
+  text(stepMfp < 0 ? "—" : round(stepMfp) + "%", right, y + 36);
 }
 
 // Left panel, under the foot: walking time split by gait
