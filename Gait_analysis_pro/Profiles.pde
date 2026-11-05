@@ -7,7 +7,7 @@ class Profile {
   int[] ch = {1, 2, 3, 4};   // MF, LF, MM, HEEL -> column in the DATA line (1 = A0)
   float heightCm = 170;
   float stepWidthCm = 0;     // 0 = not entered
-
+  float stepLengthCm = 0;
   Profile(String name, int mf, int lf, int mm, int heel) {
     this.name = name;
     ch = new int[] {mf, lf, mm, heel};
@@ -45,6 +45,9 @@ void initProfiles() {
         Profile p = new Profile(o.getString("name"), c[0], c[1], c[2], c[3]);
         p.heightCm = o.getFloat("heightCm");
         p.stepWidthCm = o.getFloat("stepWidthCm");
+        p.stepLengthCm = o.hasKey("stepLengthCm")
+        ? o.getFloat("stepLengthCm")
+        : 0;
         profiles.add(p);
       }
       if (profiles.size() > 0) {
@@ -82,6 +85,7 @@ void saveProfiles() {
     o.setJSONArray("channels", c);
     o.setFloat("heightCm", p.heightCm);
     o.setFloat("stepWidthCm", p.stepWidthCm);
+    o.setFloat("stepLengthCm", p.stepLengthCm);
     arr.append(o);
   }
   JSONObject saved = new JSONObject();
@@ -111,6 +115,8 @@ void addProfile() {
   int n = profiles.size() + 1;
   Profile p = new Profile("Profile " + n, profile.ch[0], profile.ch[1], profile.ch[2], profile.ch[3]);
   p.heightCm = profile.heightCm;
+  p.stepLengthCm = profile.stepLengthCm;
+  p.stepWidthCm = profile.stepWidthCm;
   profiles.add(p);
   selectProfile(p);
 }
@@ -142,7 +148,16 @@ void drawProfileScreen() {
   drawField("Height (cm)", 2, nf(profile.heightCm, 0, 0), PF_X, PF_NUM_Y, PF_NUM_W);
   drawField("Step width (cm, measured)", 3,
             profile.stepWidthCm > 0 ? nf(profile.stepWidthCm, 0, 1) : "", PF_NUM2_X, PF_NUM_Y, PF_NUM_W);
-
+  drawField(
+  "Step length (cm)",
+  4,
+  profile.stepLengthCm > 0
+    ? nf(profile.stepLengthCm, 0, 1)
+    : "",
+  680,
+  PF_NUM_Y,
+  150
+  );
   fill(110); textAlign(LEFT, TOP); textSize(11);
   text("Wiring: press one sensor at a time and watch which channel rises, then pick it for that region.",
        PF_X, PF_NUM_Y + 44);
@@ -204,35 +219,101 @@ boolean mouseOver(int x, int y, int w, int h) {
 
 // Input
 void profileClick() {
+
   commitField();
 
+  // Back button
   if (mouseOver(PF_LIST_X, 20, 72, 28)) {
     screen = 1;
     return;
   }
+
+  // Select profile
   for (int i = 0; i < profiles.size(); i++) {
-    if (mouseOver(PF_LIST_X, PF_LIST_Y + i * PF_ROW_H, PF_LIST_W, PF_ROW_H - 6)) {
+
+    if (mouseOver(
+      PF_LIST_X,
+      PF_LIST_Y + i * PF_ROW_H,
+      PF_LIST_W,
+      PF_ROW_H - 6)) {
+
       selectProfile(profiles.get(i));
       return;
     }
   }
+
   int by = PF_LIST_Y + profiles.size() * PF_ROW_H + 4;
+
+  // Add profile
   if (mouseOver(PF_LIST_X, by, 125, 28)) {
     addProfile();
-  } else if (mouseOver(PF_LIST_X + 135, by, 125, 28)) {
-    deleteProfile();
-  } else if (mouseOver(PF_X, PF_NAME_Y, PF_NUM2_X + PF_NUM_W - PF_X, PF_FIELD_H)) {
-    focusOn(1, profile.name);
-  } else if (mouseOver(PF_X, PF_NUM_Y, PF_NUM_W, PF_FIELD_H)) {
-    focusOn(2, nf(profile.heightCm, 0, 0));
-  } else if (mouseOver(PF_NUM2_X, PF_NUM_Y, PF_NUM_W, PF_FIELD_H)) {
-    focusOn(3, profile.stepWidthCm > 0 ? nf(profile.stepWidthCm, 0, 1) : "");
+    return;
   }
 
+  // Delete profile
+  if (mouseOver(PF_LIST_X + 135, by, 125, 28)) {
+    deleteProfile();
+    return;
+  }
+
+  // Profile name
+  if (mouseOver(
+    PF_X, PF_NAME_Y,
+    PF_NUM2_X + PF_NUM_W - PF_X,
+    PF_FIELD_H)) {
+
+    focusOn(1, profile.name);
+    return;
+  }
+
+  // Height
+  if (mouseOver(PF_X, PF_NUM_Y, PF_NUM_W, PF_FIELD_H)) {
+
+    focusOn(2, nf(profile.heightCm, 0, 0));
+    return;
+  }
+
+  // Step width
+  if (mouseOver(
+    PF_NUM2_X, PF_NUM_Y,
+    PF_NUM_W, PF_FIELD_H)) {
+
+    focusOn(
+      3,
+      profile.stepWidthCm > 0
+        ? nf(profile.stepWidthCm, 0, 1)
+        : ""
+    );
+
+    return;
+  }
+
+  // Step length
+  if (mouseOver(680, PF_NUM_Y, 150, PF_FIELD_H)) {
+
+    focusOn(
+      4,
+      profile.stepLengthCm > 0
+        ? nf(profile.stepLengthCm, 0, 1)
+        : ""
+    );
+
+    return;
+  }
+
+  // Assign sensor channels
   for (int r = 0; r < REGIONS.length; r++) {
+
     for (int c = 0; c < 4; c++) {
-      if (mouseOver(chipX(c), PF_TABLE_Y + r * PF_TABLE_ROW, PF_CHIP_W, PF_CHIP_H)) {
+
+      if (mouseOver(
+        chipX(c),
+        PF_TABLE_Y + r * PF_TABLE_ROW,
+        PF_CHIP_W,
+        PF_CHIP_H)) {
+
         assignChannel(r, c + 1);
+        return;
       }
     }
   }
@@ -244,30 +325,73 @@ void focusOn(int id, String value) {
 }
 
 void commitField() {
+
   if (focusField == 1 && trim(fieldText).length() > 0) {
+
     profile.name = trim(fieldText);
-  } else if (focusField == 2) {
-    float v = float(fieldText);
-    if (v >= 50 && v <= 250) profile.heightCm = v;
-  } else if (focusField == 3) {
-    float v = float(fieldText);
-    profile.stepWidthCm = v > 0 && v <= 100 ? v : 0;
   }
-  if (focusField != 0) saveProfiles();
+
+  else if (focusField == 2) {
+
+    float v = float(fieldText);
+
+    if (v >= 50 && v <= 250) {
+      profile.heightCm = v;
+    }
+  }
+
+  else if (focusField == 3) {
+
+    float v = float(fieldText);
+
+    profile.stepWidthCm =
+      v > 0 && v <= 100 ? v : 0;
+  }
+
+  else if (focusField == 4) {
+
+    float v = float(fieldText);
+
+    profile.stepLengthCm =
+      v > 0 && v <= 200 ? v : 0;
+  }
+
+  if (focusField != 0) {
+    saveProfiles();
+  }
+
   focusField = 0;
 }
 
 void profileKey() {
-  if (key == ESC) key = 0;   // Processing would otherwise quit the sketch
+
+  if (key == ESC) key = 0;
+
   if (focusField == 0 || key == CODED) return;
 
   if (key == ENTER || key == RETURN) {
+
     commitField();
-  } else if (key == BACKSPACE || key == DELETE) {
-    if (fieldText.length() > 0) fieldText = fieldText.substring(0, fieldText.length() - 1);
-  } else if (key >= ' ' && key != 127) {
+  }
+
+  else if (key == BACKSPACE || key == DELETE) {
+
+    if (fieldText.length() > 0) {
+      fieldText =
+        fieldText.substring(0, fieldText.length() - 1);
+    }
+  }
+
+  else if (key >= ' ' && key != 127) {
+
     boolean numeric = focusField != 1;
-    boolean allowed = numeric ? (key >= '0' && key <= '9') || key == '.' : fieldText.length() < 24;
-    if (allowed) fieldText += key;
+
+    boolean allowed = numeric
+      ? (key >= '0' && key <= '9') || key == '.'
+      : fieldText.length() < 24;
+
+    if (allowed) {
+      fieldText += key;
+    }
   }
 }

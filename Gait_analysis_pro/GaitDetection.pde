@@ -12,6 +12,9 @@ final int MIN_VOTES         = 3;
 
 final float IN_TOE_BALANCE  =  0.11;
 final float OUT_TOE_BALANCE = -0.08;
+// Medial Force Percentage
+float sessionMedialSum = 0;
+float sessionTotalSum = 0;
 
 boolean footArmed = false;   // stays false until the first lift, so standing isn't a step
 boolean footDown  = false;
@@ -41,6 +44,8 @@ synchronized void resetGait() {
   lastContactGait = -1;
   gaitMs = new int[GAITS.length];
   resetStride();
+  sessionMedialSum = 0;
+  sessionTotalSum = 0;
 }
 
 synchronized void updateGait(int now) {
@@ -56,12 +61,25 @@ synchronized void updateGait(int now) {
   if (!footDown && on) landFoot(now);
 
   if (footDown) {
-    peakMF   = max(peakMF, mf);
-    peakLF   = max(peakLF, lf);
-    peakMM   = max(peakMM, mm);
-    peakHeel = max(peakHeel, heel);
-    if (off && now - landTime >= MIN_CONTACT_MS) liftFoot(now);
+
+  peakMF   = max(peakMF, mf);
+  peakLF   = max(peakLF, lf);
+  peakMM   = max(peakMM, mm);
+  peakHeel = max(peakHeel, heel);
+
+  // Accumulate FSR readings during stance
+  if (!off) {
+
+    sessionMedialSum += mf + mm;
+
+    sessionTotalSum +=
+      mf + lf + mm + heel;
   }
+
+  if (off && now - landTime >= MIN_CONTACT_MS) {
+    liftFoot(now);
+  }
+}
 }
 
 void landFoot(int now) {
@@ -149,8 +167,19 @@ String strideTimeText() {
 }
 
 float strideLengthM() {
-  if (gyroStrideM > 0) return gyroStrideM;
-  return STRIDE_PER_HEIGHT * profile.heightCm / 100;
+
+  // Priority 1: measured step length
+  if (profile.stepLengthCm > 0) {
+    return 2.0 * profile.stepLengthCm / 100.0;
+  }
+
+  // Priority 2: inertial estimate
+  if (gyroStrideM > 0) {
+    return gyroStrideM;
+  }
+
+  // Fallback: anthropometric estimate
+  return STRIDE_PER_HEIGHT * profile.heightCm / 100.0;
 }
 
 String strideLengthText() {
@@ -165,4 +194,25 @@ String speedText() {
 String stepWidthText() {
   if (profile.stepWidthCm > 0) return nf(profile.stepWidthCm, 0, 1) + " cm";
   return "Needs 2 feet";
+}
+
+String stepLengthText() {
+
+  if (profile.stepLengthCm <= 0) {
+    return "— cm";
+  }
+
+  return nf(profile.stepLengthCm, 0, 1) + " cm";
+}
+
+String mfpText() {
+
+  if (sessionTotalSum <= 0) {
+    return "— %";
+  }
+
+  float mfp =
+    100.0 * sessionMedialSum / sessionTotalSum;
+
+  return nf(mfp, 0, 1) + "%";
 }

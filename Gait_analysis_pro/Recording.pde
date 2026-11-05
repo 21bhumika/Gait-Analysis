@@ -13,7 +13,7 @@ synchronized void startRecording() {
   String stamp = year() + "-" + nf(month(), 2) + "-" + nf(day(), 2) + "_"
                + nf(hour(), 2) + "-" + nf(minute(), 2) + "-" + nf(second(), 2);
   recording = createWriter("recordings/session_" + stamp + ".txt");
-  recording.println("time_ms,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec,gx,gy,gz,board_ms");
+  recording.println("time_ms,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec,gx,gy,gz,board_ms,MFP_pct");
   recordStart = millis();
   resetGait();
 }
@@ -32,7 +32,10 @@ synchronized void recordSample() {
     + int(mmBuf[BUF-1]) + "," + int(heelBuf[BUF-1]) + ","
     + ax + "," + ay + "," + az + ","
     + (inMotion ? 1 : 0) + "," + activitySec + ","
-    + gyroX + "," + gyroY + "," + gyroZ + "," + boardMs);
+    + gyroX + "," + gyroY + "," + gyroZ + "," + boardMs
+    + "," + (sessionTotalSum > 0
+    ? nf(100.0 * sessionMedialSum / sessionTotalSum, 0, 2)
+    : "0"));
   recording.flush();
 }
 
