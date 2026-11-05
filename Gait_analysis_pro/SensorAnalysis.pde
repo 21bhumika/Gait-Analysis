@@ -1,6 +1,4 @@
-// Serial / data
 // Arduino format: DATA,MF,LF,MM,HEEL,ax,ay,az,motion,activitySec,gx,gy,gz,timeMs*checksum
-// Baud: 115200  |  Rate: 25 Hz (every 40 ms)
 
 Serial port;
 final int BUF = 250;
@@ -34,7 +32,6 @@ void serialEvent(Serial p) {
 
 int rejectedLines = 0;
 
-// Damaged lines have fields missing or merged, so reading them shifts every value.
 boolean checksumOk(String raw) {
   int star = raw.lastIndexOf('*');
   if (star < 0 || raw.length() != star + 3) return false;
@@ -84,13 +81,11 @@ void pushSample(float mf, float lf, float mm, float heel) {
   mmBuf[BUF-1] = mm;  heelBuf[BUF-1] = heel;
 }
 
-// Layout constants 
-final int DIVX  = 1100 / 3;   // vertical divider x
-final int DIVY  = 700  / 2;   // horizontal divider y (right side)
+final int DIVX  = 1100 / 3;
+final int DIVY  = 700  / 2;
 final int PAD   = 10;
-final int TITLE = 24;          // height reserved for section titles
+final int TITLE = 24;
 
-// Top-level draw call 
 void drawSensorAnalysis() {
   background(242, 242, 242);
   drawSADividers();
@@ -104,16 +99,12 @@ void drawSensorAnalysis() {
   drawProfileBtn();
 }
 
-// Dividers 
 void drawSADividers() {
   stroke(200); strokeWeight(1);
   line(DIVX, 0, DIVX, height);
   line(DIVX, DIVY, width, DIVY);
 }
 
-// Left 1/3: heatmap, see Heatmap.pde 
-
-// Top-right: 4 FSR graphs in 2×2 grid 
 void drawFSRGraphs() {
   int rx = DIVX, rw = width - DIVX, rh = DIVY;
 
@@ -152,7 +143,7 @@ void drawGraph(String label, float[] data, int x, int y, int w, int h, color c, 
   for (int s = 0; s <= windowSec; s += 2) {
     float gx = px + map(s, windowSec, 0, 0, pw);
     stroke(232); line(gx, py, gx, py + ph);
-    if (s == windowSec) continue;   // would collide with the 0 on the value axis
+    if (s == windowSec) continue;
     fill(130); textAlign(s == 0 ? RIGHT : CENTER, TOP);
     text(s == 0 ? "now" : "-" + s + "s", gx, py + ph + 2);
   }
@@ -172,7 +163,6 @@ void drawGraph(String label, float[] data, int x, int y, int w, int h, color c, 
   }
 }
 
-// Bottom-right: 3×3 info boxes
 void drawInfoPanel() {
 
   int rx = DIVX;
@@ -200,7 +190,6 @@ void drawInfoPanel() {
   int y1 = y0 + bh + PAD;
   int y2 = y1 + bh + PAD;
 
-  // ROW 1
   drawInfoBox(
     "Step Count",
     str(stepCount),
@@ -219,7 +208,6 @@ void drawInfoPanel() {
     x2, y0, bw, bh
   );
 
-  // ROW 2
   drawInfoBox(
     "Status",
     inMotion ? "In Motion" : "Standing Still",
@@ -238,7 +226,6 @@ void drawInfoPanel() {
     x2, y1, bw, bh
   );
 
-  // ROW 3
   drawInfoBox(
     "Stride Length",
     strideLengthText(),
@@ -271,7 +258,6 @@ void drawInfoBox(String label, String value, int x, int y, int w, int h) {
   text(value, x + 8, y + h - 6);
 }
 
-// Left panel, above the foot: Medial Force Percentage
 void drawMfp() {
   int x = PAD * 3, right = DIVX - PAD * 3, y = 48;
 
@@ -287,7 +273,6 @@ void drawMfp() {
   text(stepMfp < 0 ? "—" : round(stepMfp) + "%", right, y + 36);
 }
 
-// Left panel, under the foot: walking time split by gait
 void drawGaitTimes() {
   int x = PAD * 3, right = DIVX - PAD * 3, y = 532, rowH = 21;
 
@@ -313,7 +298,6 @@ void drawGaitRow(String label, int ms, int x, int right, int y, int shade) {
   text(formatTime(ms), right, y);
 }
 
-// Top of the left panel: opens the profile screen
 final int PROFILE_BTN_W = 200, PROFILE_BTN_H = 24;
 
 void drawProfileBtn() {
@@ -323,7 +307,6 @@ void drawProfileBtn() {
   text("Profile: " + profile.name, PAD + PROFILE_BTN_W / 2, PAD + 8);
 }
 
-// Back button
 void drawSABackBtn() {
   fill(230); stroke(180); strokeWeight(1);
   rect(DIVX + PAD, PAD - 4, 68, 24, 4);

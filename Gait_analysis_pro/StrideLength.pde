@@ -1,17 +1,12 @@
-// Stride length from the foot's gyro and accelerometer
-// Between two moments the foot is still, track its orientation with the gyro, remove
-// gravity from the accelerometer and integrate twice. The foot must end a swing at rest,
-// so any velocity left over is drift and gets removed from the distance.
-
 final float GRAVITY = 9.81;
-final float STILL_GYRO   = 0.6;   // rad/s
-final float STILL_ACCEL  = 1.2;   // m/s^2 away from gravity
+final float STILL_GYRO   = 0.6;
+final float STILL_ACCEL  = 1.2;
 final int   STILL_SAMPLES = 3;
 
 final float MIN_SWING_S = 0.25, MAX_SWING_S = 2.5;
 final float MIN_STRIDE_M = 0.2, MAX_STRIDE_M = 3.0;
 
-float[] footQ = null;             // sensor -> world, null until the foot has been at rest
+float[] footQ = null;
 float[] footVel = new float[3];
 float[] footPos = new float[3];
 float[] stillAccel = new float[3];
@@ -19,7 +14,7 @@ float[] lastGyro = new float[3];
 int stillCount = 0;
 int lastBoardMs = -1;
 float swingS = 0;
-float gyroStrideM = 0;            // 0 until a valid swing has been measured
+float gyroStrideM = 0;
 
 synchronized void resetStride() {
   footQ = null;
@@ -67,8 +62,6 @@ void finishSwing() {
   gyroStrideM = gyroStrideM == 0 ? stride : 0.7 * gyroStrideM + 0.3 * stride;
 }
 
-// While still the accelerometer only sees gravity, which gives tilt. Heading stays
-// arbitrary, which is fine because only the size of the horizontal move is used.
 void updateRestPose(float fx, float fy, float fz) {
   if (stillCount == STILL_SAMPLES) stillAccel = new float[3];
   stillAccel[0] += fx;
@@ -83,7 +76,7 @@ float[] levelQuaternion(float[] a) {
   float n = sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
   float ux = a[0] / n, uy = a[1] / n, uz = a[2] / n;
   if (uz < -0.9999) return new float[] {0, 1, 0, 0};
-  // Shortest rotation from the measured up direction onto +z
+
   return normalizedQ(new float[] {1 + uz, uy, -ux, 0});
 }
 

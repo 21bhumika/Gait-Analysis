@@ -1,7 +1,3 @@
-// Session recording
-// Writes every sample to recordings/session_<date>_<time>.txt in the sketch folder.
-// serialEvent() runs on its own thread, so writer access is synchronized.
-
 PrintWriter recording = null;
 int recordStart = 0;
 
@@ -24,7 +20,6 @@ synchronized void stopRecording() {
   recording = null;
 }
 
-// Flushes each line so a session survives the sketch being stopped from the IDE.
 synchronized void recordSample() {
   if (recording == null) return;
   recording.println((millis() - recordStart) + ","

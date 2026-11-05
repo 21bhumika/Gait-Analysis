@@ -1,20 +1,15 @@
-// Sensor profiles
-// Each board can be wired differently, so a profile maps every foot region to an
-// Arduino channel. Saved to profiles.json in the sketch folder.
-
 class Profile {
   String name;
   int[] ch = {1, 2, 3, 4};   // MF, LF, MM, HEEL -> column in the DATA line (1 = A0)
   float heightCm = 170;
-  float stepWidthCm = 0;     // 0 = not entered
+  float stepWidthCm = 0;
   float stepLengthCm = 0;
 
-  // Gait rules, see classifyContact()
   float tipHeelMax = DEFAULT_TIP_HEEL;
   float heelForeMax = DEFAULT_HEEL_FORE;
   float inToeBalance = DEFAULT_IN_TOE;
   float outToeBalance = DEFAULT_OUT_TOE;
-  float[][] taught = new float[GAITS.length][];   // {heel peak, forefoot peak, balance}
+  float[][] taught = new float[GAITS.length][];
 
   Profile(String name, int mf, int lf, int mm, int heel) {
     this.name = name;
@@ -32,7 +27,6 @@ ArrayList<Profile> profiles = new ArrayList<Profile>();
 Profile profile;
 float[] rawCh = new float[4];
 
-// Profile screen layout
 final int PF_LIST_X = 30, PF_LIST_Y = 80, PF_LIST_W = 260, PF_ROW_H = 36;
 final int PF_X = 330, PF_FIELD_H = 30;
 final int PF_NAME_Y = 90, PF_NUM_Y = 160;
@@ -43,10 +37,10 @@ final int PF_BAR_X = 760, PF_BAR_W = 300;
 final int PF_RULES_Y = 498, PF_RULE_FIELD_Y = 532, PF_TEACH_Y = 582;
 final int PF_RULE_W = 150, PF_RULE_GAP = 16, PF_TEACH_W = 134, PF_TEACH_H = 30;
 
-int focusField = 0;   // 0=none 1=name 2=height 3=step width 4=step length 5-8=gait rules
+int focusField = 0;
 String fieldText = "";
 
-int teachGait = -1;   // index into GAITS while teaching
+int teachGait = -1;
 ArrayList<float[]> teachSamples = new ArrayList<float[]>();
 String teachMessage = "";
 
@@ -148,7 +142,6 @@ void selectProfile(Profile p) {
   saveProfiles();
 }
 
-// Teaching: walk one gait, and its median measurements become that profile's reference.
 synchronized void startTeaching(int gait) {
   teachGait = gait;
   teachSamples.clear();
@@ -186,7 +179,6 @@ synchronized void finishTeaching() {
   saveProfiles();
 }
 
-// Each limit goes halfway between the two gaits it separates, once both have been taught.
 String updateRulesFromTaught(Profile p) {
   float[][] t = p.taught;
   String warning = "";
@@ -212,7 +204,6 @@ String updateRulesFromTaught(Profile p) {
   return warning;
 }
 
-// Lowest value of one measurement across the other taught gaits, or -1 if there are none.
 float lowestTaught(Profile p, int skip, int measure) {
   float lowest = -1;
   for (int i = 0; i < GAITS.length; i++) {
@@ -233,7 +224,6 @@ void resetGaitRules() {
   saveProfiles();
 }
 
-// Keeps the mapping one-to-one: the region already on this channel takes the old one.
 void assignChannel(int region, int channel) {
   int old = profile.ch[region];
   for (int i = 0; i < profile.ch.length; i++) {
@@ -261,7 +251,6 @@ void deleteProfile() {
   selectProfile(profiles.get(min(i, profiles.size() - 1)));
 }
 
-// Drawing
 void drawProfileScreen() {
   background(242, 242, 242);
 
@@ -295,7 +284,6 @@ void drawProfileScreen() {
   text("Wiring: press one sensor at a time and watch which channel rises, then pick it for that region.",
        PF_X, PF_NUM_Y + 44);
 
-  // Live reading above each channel column
   textAlign(CENTER, BOTTOM); textSize(10); fill(90);
   for (int c = 0; c < 4; c++) {
     text(int(rawCh[c]), chipX(c) + PF_CHIP_W / 2, PF_TABLE_Y - 4);
@@ -395,19 +383,16 @@ boolean mouseOver(int x, int y, int w, int h) {
   return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
 }
 
-// Input
 void profileClick() {
 
   commitField();
 
-  // Back button
   if (mouseOver(PF_LIST_X, 20, 72, 28)) {
     cancelTeaching();
     screen = 1;
     return;
   }
 
-  // Gait rule limits
   if (mouseOver(ruleX(0), PF_RULE_FIELD_Y, PF_RULE_W, PF_FIELD_H)) {
     focusOn(5, nf(profile.tipHeelMax, 0, 0));
     return;
@@ -429,7 +414,6 @@ void profileClick() {
     return;
   }
 
-  // Teach a gait
   for (int i = 0; i < GAITS.length; i++) {
     if (mouseOver(teachX(i), PF_TEACH_Y, PF_TEACH_W, PF_TEACH_H)) {
       if (teachGait == i) finishTeaching();
@@ -438,7 +422,6 @@ void profileClick() {
     }
   }
 
-  // Select profile
   for (int i = 0; i < profiles.size(); i++) {
 
     if (mouseOver(
@@ -454,19 +437,16 @@ void profileClick() {
 
   int by = PF_LIST_Y + profiles.size() * PF_ROW_H + 4;
 
-  // Add profile
   if (mouseOver(PF_LIST_X, by, 125, 28)) {
     addProfile();
     return;
   }
 
-  // Delete profile
   if (mouseOver(PF_LIST_X + 135, by, 125, 28)) {
     deleteProfile();
     return;
   }
 
-  // Profile name
   if (mouseOver(
     PF_X, PF_NAME_Y,
     PF_NUM2_X + PF_NUM_W - PF_X,
@@ -476,14 +456,12 @@ void profileClick() {
     return;
   }
 
-  // Height
   if (mouseOver(PF_X, PF_NUM_Y, PF_NUM_W, PF_FIELD_H)) {
 
     focusOn(2, nf(profile.heightCm, 0, 0));
     return;
   }
 
-  // Step width
   if (mouseOver(
     PF_NUM2_X, PF_NUM_Y,
     PF_NUM_W, PF_FIELD_H)) {
@@ -498,7 +476,6 @@ void profileClick() {
     return;
   }
 
-  // Step length
   if (mouseOver(680, PF_NUM_Y, 150, PF_FIELD_H)) {
 
     focusOn(
@@ -511,7 +488,6 @@ void profileClick() {
     return;
   }
 
-  // Assign sensor channels
   for (int r = 0; r < REGIONS.length; r++) {
 
     for (int c = 0; c < 4; c++) {
@@ -566,7 +542,6 @@ void commitField() {
       v > 0 && v <= 200 ? v : 0;
   }
 
-  // Gait rules keep their old value if the entry is out of range
   else if (focusField == 5 || focusField == 6) {
 
     float v = float(fieldText);
@@ -577,7 +552,6 @@ void commitField() {
     }
   }
 
-  // Balance limits can be on either side of 0, depending on the person's normal walk
   else if (focusField == 7 || focusField == 8) {
 
     float v = float(fieldText);

@@ -1,52 +1,41 @@
-// ── Pressure heatmap ─────────────────────────────────────────────
-// Draws layered circles on top of Left_foot.png / Right_foot.png.
-// Reading < 400        -> nothing (0 = not touching)
-// Every +100 above 400 -> one more ring, outer rings bigger + darker
-
 PImage leftFootImg, rightFootImg;
 PImage image;
 
-final float HM_MIN  = 400;   // first ring appears here
-final float HM_STEP = 100;   // one extra ring every HM_STEP
-final int   HM_MAX_LEVELS = 7;  // 400..1000
+final float HM_MIN  = 400;
+final float HM_STEP = 100;
+final int   HM_MAX_LEVELS = 7;
 
-// Index 0 = innermost, last = outermost at max pressure
 color[] hmColors = {
-  color(255, 235, 0),    // yellow
-  color(255, 165, 0),    // orange
-  color(255, 110, 0),    // dark orange
-  color(235, 40, 0),     // red
-  color(190, 0, 0),      // dark red
-  color(140, 0, 0),      // darker red
-  color(90, 0, 0)        // maroon
+  color(255, 235, 0),
+  color(255, 165, 0),
+  color(255, 110, 0),
+  color(235, 40, 0),
+  color(190, 0, 0),
+  color(140, 0, 0),
+  color(90, 0, 0)
 };
 
-// Sensor positions as fractions of the RIGHT foot image (medial side = left).
-// Order: MF, LF, MM, HEEL. The left foot uses the mirrored x.
-
-/* positions for green board 
+/* positions for green board
   {0.30, 0.33},   // MF   medial forefoot
   {0.72, 0.41},   // LF   lateral forefoot
   {0.27, 0.54},   // MM   medial midfoot
   {0.50, 0.86}    // HEEL
 */
 
-/* positions for orange board 
+/* positions for orange board
  {0.70, 0.28},   // MF   medial forefoot
   {0.32, 0.41},   // LF   lateral forefoot
   {0.67, 0.50},   // MM   medial midfoot
   {0.50, 0.86},   // HEEL
 */
 
-// Positions for orange
 float[][] hmPoints = {
-  {0.70, 0.28},   // MF   medial forefoot
-  {0.32, 0.41},   // LF   lateral forefoot
-  {0.67, 0.50},   // MM   medial midfoot
-  {0.50, 0.86},   // HEEL
+  {0.70, 0.28},
+  {0.32, 0.41},
+  {0.67, 0.50},
+  {0.50, 0.86},
 };
 
-// Called from drawSensorAnalysis(); fills the left 1/3 panel.
 void drawHeatmap() {
   if (leftFootImg == null) {
     leftFootImg  = loadImage("Left_foot.png");
@@ -62,8 +51,6 @@ void drawHeatmap() {
   float mm   = mmBuf[BUF-1];
   float heel = heelBuf[BUF-1];
 
-  // Both feet currently show the same readings.
-  // Pass separate values here once each foot has its own sensors.
   float footW = DIVX / 2 - 2 * PAD;
   drawFootHeatmap(image, (DIVX - footW) / 2, footW, true, mf, lf, mm, heel);
 }
@@ -83,7 +70,6 @@ void drawFootHeatmap(PImage img, float x, float w, boolean mirror,
   }
 }
 
-// Concentric rings: biggest/darkest first, smallest/yellow last on top.
 void drawPressureRings(float cx, float cy, float value, float ringStep) {
   if (value < HM_MIN) return;
   int levels = min(int((value - HM_MIN) / HM_STEP) + 1, HM_MAX_LEVELS);

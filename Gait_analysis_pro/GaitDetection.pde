@@ -1,32 +1,25 @@
-// Step and gait detection
-// One contact = the instrumented foot landing, then lifting.
-// Thresholds were chosen from the walking sessions in recordings/.
-
-final float FOOT_ON  = 400, FOOT_OFF = 280;   // MF, LF, MM (LF can sit near 250 during swing)
-final float HEEL_ON  = 650, HEEL_OFF = 600;   // heel stays loaded during swing
+final float FOOT_ON  = 400, FOOT_OFF = 280;
+final float HEEL_ON  = 650, HEEL_OFF = 600;
 
 final int MIN_CONTACT_MS    = 350;
 final int GAIT_PAUSE_MS     = 3000;
-final int STEPS_PER_CONTACT = 2;              // sensors are on one foot only
+final int STEPS_PER_CONTACT = 2;
 final int MIN_VOTES         = 3;
 
-// Medial Force Percentage
 float sessionMedialSum = 0;
 float sessionTotalSum = 0;
 
-boolean footArmed = false;   // stays false until the first lift, so standing isn't a step
+boolean footArmed = false;
 boolean footDown  = false;
 int landTime = 0;
 float peakMF = 0, peakLF = 0, peakMM = 0, peakHeel = 0;
 
-// Measurements from the last finished contact
 float lastHeelPeak = 0, lastForePeak = 0, lastBalance = 0;
 String lastGait = "";
 
 String[] gaitVotes = new String[5];
 int voteCount = 0;
 
-// Rule of thumb: one step is about 0.415 x height, and a stride is two steps.
 final float STRIDE_PER_HEIGHT = 0.83;
 
 final String[] GAITS = {"Normal Gait", "Heel Walking", "Tip Toe", "In-Toe", "Out-Toe"};
@@ -35,9 +28,8 @@ int lastContactGait = -1;
 float strideMs = 0;
 int walkStart = 0;
 
-// Medial Force Percentage, live and averaged over the last foot contact
 float mfpLive = 0;
-float stepMfp = -1;   // -1 until a contact has finished
+float stepMfp = -1;
 float mfpSum = 0;
 int mfpSamples = 0;
 
@@ -80,7 +72,6 @@ synchronized void updateGait(int now) {
     mfpSum += mfpLive;
     mfpSamples++;
 
-    // Accumulate FSR readings during stance
     if (!off) {
       sessionMedialSum += mf + mm;
       sessionTotalSum += mf + lf + mm + heel;
@@ -114,7 +105,7 @@ void landFoot(int now) {
 
 void liftFoot(int now) {
   footDown = false;
-  if (now - landTime >= GAIT_PAUSE_MS) return;   // standing still, not a step
+  if (now - landTime >= GAIT_PAUSE_MS) return;
   stepMfp = mfpSum / mfpSamples;
   lastHeelPeak = peakHeel;
   lastForePeak = max(peakMF, peakLF, peakMM);
@@ -129,7 +120,6 @@ void liftFoot(int now) {
   }
 }
 
-// Thresholds belong to the profile because they differ per person and per insole.
 String classifyContact() {
   if (lastHeelPeak < profile.tipHeelMax) return "Tip Toe";
   if (lastForePeak < profile.heelForeMax) return "Heel Walking";
@@ -145,7 +135,6 @@ void addGaitVote(String gait) {
   voteCount = min(voteCount + 1, gaitVotes.length);
   if (voteCount < MIN_VOTES) return;
 
-  // >= so a tie goes to the more recent gait
   int bestCount = 0;
   for (int i = gaitVotes.length - voteCount; i < gaitVotes.length; i++) {
     int n = 0;
@@ -185,17 +174,14 @@ String strideTimeText() {
 
 float strideLengthM() {
 
-  // Priority 1: measured step length
   if (profile.stepLengthCm > 0) {
     return 2.0 * profile.stepLengthCm / 100.0;
   }
 
-  // Priority 2: inertial estimate
   if (gyroStrideM > 0) {
     return gyroStrideM;
   }
 
-  // Fallback: anthropometric estimate
   return STRIDE_PER_HEIGHT * profile.heightCm / 100.0;
 }
 

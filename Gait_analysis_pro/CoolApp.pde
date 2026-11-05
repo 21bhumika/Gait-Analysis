@@ -1,17 +1,3 @@
-/*
- * COOL APPLICATION - play Subway Surfers with the foot sensor
- * Same structure as the ADS tattoo lab: the sensor events are mapped to actions,
- * and the actions are sent to the computer through java.awt.Robot (keyboard here).
- *
- *   JUMP        -> W   foot leaves the ground (unloaded, near free-fall, little rotation)
- *   MOVE_LEFT   -> A   sideways push of the foot, direction learned by calibration
- *   MOVE_RIGHT  -> D   sideways push the other way
- *
- * Keys go to whichever window has focus, so click the game window first.
- * Keys are only sent while this screen is open and the controller is ON.
- * Keyboard testing without the sensor: press 1 / 2 / 3 on this screen.
- */
-
 import java.awt.Robot;
 
 final String JUMP       = "JUMP";
@@ -19,27 +5,23 @@ final String MOVE_LEFT  = "MOVE_LEFT";
 final String MOVE_RIGHT = "MOVE_RIGHT";
 final String SPACE      = "SPACE";
 
-// ---------- control mode ----------
-final int MODE_STRENUOUS = 0;   // jump + step sideways (motion sensing)
-final int MODE_RELAXED   = 1;   // press the foot sensors like buttons
-final int MODE_SPACE     = 2;   // Space only
+final int MODE_STRENUOUS = 0;
+final int MODE_RELAXED   = 1;
+final int MODE_SPACE     = 2;
 int caMode = MODE_STRENUOUS;
 final String[] CA_MODE_NAME = { "Mode 1: Strenuous (3 directions)", "Mode 2: Relaxed (3 directions)", "Mode 3: Space only" };
 
-// Space-only mode: what sends Space (set either to false to disable it)
-final boolean SPACE_FROM_PAD  = true;   // pressing MF
-final boolean SPACE_FROM_JUMP = true;   // a jump gesture
+final boolean SPACE_FROM_PAD  = true;
+final boolean SPACE_FROM_JUMP = true;
 
-// Relaxed mode: pad i triggers gestureActions[RELAXED_PAD_ACTION[i]]  (0 JUMP, 1 MOVE_LEFT, 2 MOVE_RIGHT)
 final String[] RELAXED_PAD_NAME   = { "MF", "MM", "LF" };
 final int[]    RELAXED_PAD_ACTION = { 0, 1, 2 };
-final float RELAXED_ON  = 300;  // pressed above this
-final float RELAXED_OFF = 150;  // released below this (a pad must be released before it can fire again)
+final float RELAXED_ON  = 300;
+final float RELAXED_OFF = 150;
 boolean[] caPadDown  = new boolean[3];
-boolean[] caPadArmed = new boolean[3];   // false until the pad has been seen released
-float[]   caPadValue = new float[3];     // for the on-screen readout
+boolean[] caPadArmed = new boolean[3];
+float[]   caPadValue = new float[3];
 
-// gestureActions and actionKeys line up by index; change a key here to rebind it
 String[] gestureActions = { JUMP, MOVE_LEFT, MOVE_RIGHT, SPACE };
 int[]    actionKeys     = { java.awt.event.KeyEvent.VK_W, java.awt.event.KeyEvent.VK_A,
                             java.awt.event.KeyEvent.VK_D, java.awt.event.KeyEvent.VK_SPACE };
@@ -47,31 +29,29 @@ String[] actionKeyNames = { "W", "A", "D", "Space" };
 
 boolean[] held      = new boolean[gestureActions.length];
 int[]     releaseAt = new int[gestureActions.length];
-final int KEY_HOLD_MS = 80;           // how long each key stays down
+final int KEY_HOLD_MS = 80;
 
 Robot robot;
 String lastEvent = "waiting for input...";
 int lastEventMs = 0;
 
-// ---------- tunables (adjust while watching the live readout) ----------
-final float CA_FLIGHT_ACCEL_MAX = 5.0;   // m/s^2  total accel below this = airborne
-final float CA_FLIGHT_GYRO_MAX  = 4.0;   // rad/s  a swinging foot rotates faster than this
-final int   CA_FLIGHT_MS        = 140;   // airborne this long = a jump
+final float CA_FLIGHT_ACCEL_MAX = 5.0;
+final float CA_FLIGHT_GYRO_MAX  = 4.0;
+final int   CA_FLIGHT_MS        = 140;
 final int   CA_JUMP_COOLDOWN_MS = 700;
 
-final float CA_SIDE_THRESH      = 4.0;   // m/s^2 sideways push, gravity removed
-final float CA_SIDE_DOMINANCE   = 1.3;   // sideways must beat forward/back by this factor
+final float CA_SIDE_THRESH      = 4.0;
+final float CA_SIDE_DOMINANCE   = 1.3;
 final int   CA_SIDE_COOLDOWN_MS = 450;
 
-// ---------- state ----------
 boolean caEnabled    = true;
 boolean caCalibrated = false;
 
-float[] caGrav = new float[3];    // slow average of the accelerometer = gravity direction
-float[] caLin  = new float[3];    // accelerometer minus gravity
+float[] caGrav = new float[3];
+float[] caLin  = new float[3];
 boolean caGravInit = false;
 int   caUp = 1, caLat = 0, caFwd = 2;
-float caLatSign = 1;              // +1: positive sideways push means LEFT
+float caLatSign = 1;
 
 float caAccMag = 0, caGyroMag = 0, caLatNow = 0, caFwdNow = 0;
 boolean caAirborne = false;
@@ -79,14 +59,12 @@ int   caFlightStart = -1;
 boolean caJumpSent = false;
 int   caLastJump = -10000, caLastSide = -10000;
 
-int    caCalState = 0;            // 0 idle, 1 waiting for the calibration step
+int    caCalState = 0;
 int    caCalStart = 0;
 String caMsg = "Press C, stand still, then take one step to your LEFT.";
 
 final String CA_AXES = "XYZ";
 
-
-// ---------- Robot / actions ----------
 void caInitRobot() {
   if (robot != null) return;
   try {
@@ -117,7 +95,6 @@ synchronized void releaseDue() {
   }
 }
 
-// Let go of any key still down so nothing stays stuck
 synchronized void caReleaseAll() {
   if (robot == null) return;
   for (int i = 0; i < held.length; i++) {
@@ -131,8 +108,6 @@ void exit() {
   super.exit();
 }
 
-
-// ---------- sensor processing (called for every serial sample) ----------
 boolean caFootOff() {
   return mfBuf[BUF-1] < FOOT_OFF && lfBuf[BUF-1] < FOOT_OFF
       && mmBuf[BUF-1] < FOOT_OFF && heelBuf[BUF-1] < HEEL_OFF;
@@ -150,10 +125,9 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
 
   for (int i = 0; i < 3; i++) {
     caLin[i] = a[i] - caGrav[i];
-    caGrav[i] += 0.02 * (a[i] - caGrav[i]);      // ~1 s time constant at 50 Hz
+    caGrav[i] += 0.02 * (a[i] - caGrav[i]);
   }
 
-  // which sensor axis points up? (the mounting has changed between sessions)
   caUp = 0;
   for (int i = 1; i < 3; i++) if (abs(caGrav[i]) > abs(caGrav[caUp])) caUp = i;
   if (!caCalibrated) {
@@ -165,15 +139,14 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
   caGyroMag = sqrt(wx * wx + wy * wy + wz * wz);
 
   if (caMode == MODE_RELAXED) { caRelaxedFeed(now); return; }
-  if (caMode == MODE_SPACE && SPACE_FROM_PAD) caSpacePadFeed();   // then falls through to jump detection
+  if (caMode == MODE_SPACE && SPACE_FROM_PAD) caSpacePadFeed();
 
-  // ---- JUMP ----
   caAirborne = caFootOff() && caAccMag < CA_FLIGHT_ACCEL_MAX && caGyroMag < CA_FLIGHT_GYRO_MAX;
   if (caAirborne) {
     if (caFlightStart < 0) caFlightStart = now;
     if (!caJumpSent && now - caFlightStart >= CA_FLIGHT_MS && now - caLastJump > CA_JUMP_COOLDOWN_MS) {
-      if (caMode != MODE_SPACE)  triggerAction(0, "jump gesture");   // W
-      else if (SPACE_FROM_JUMP)  triggerAction(3, "jump gesture");   // Space
+      if (caMode != MODE_SPACE)  triggerAction(0, "jump gesture");
+      else if (SPACE_FROM_JUMP)  triggerAction(3, "jump gesture");
       caJumpSent = true;
       caLastJump = now;
     }
@@ -182,10 +155,9 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
     caJumpSent = false;
   }
 
-  if (caMode == MODE_SPACE) return;    // no sideways steps in Space-only mode
+  if (caMode == MODE_SPACE) return;
   caFwdNow = caLin[caFwd];
 
-  // ---- CALIBRATION: first big sideways push after 1 s of stillness = LEFT ----
   if (caCalState == 1) {
     if (now - caCalStart > 7000) {
       caCalState = 0;
@@ -207,7 +179,6 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
     return;
   }
 
-  // ---- MOVE_LEFT / MOVE_RIGHT ----
   if (!caAirborne && now - caLastSide > CA_SIDE_COOLDOWN_MS) {
     float lat = caLatNow, fwd = caFwdNow;
     if (abs(lat) > CA_SIDE_THRESH && abs(lat) > CA_SIDE_DOMINANCE * abs(fwd)) {
@@ -218,8 +189,6 @@ void coolFeed(float fx, float fy, float fz, float wx, float wy, float wz, int no
   }
 }
 
-
-// ---------- screen ----------
 final int CA_BTN_W = 210, CA_BTN_H = 54, CA_BTN_Y = 600;
 final int[] CA_BTN_X = { 60, 320, 580, 840 };
 final String[] CA_BTN_LABEL = { "Back (B)", "Calibrate (C)", "Controller (E)", "Mode (M)" };
@@ -262,7 +231,6 @@ void drawCoolApp() {
        + (caCalibrated ? "  (calibrated)" : "  (default, press C)"), x, y + 4 * dy);
   text("Sideways push:  " + nf(caLatNow, 0, 1) + " m/s^2     forward/back: " + nf(caFwdNow, 0, 1), x, y + 5 * dy);
 
-  // sideways bar: left of centre = LEFT, right of centre = RIGHT
   int bx = x, by = y + 6 * dy, bw = 500;
   noFill(); stroke(180); rect(bx, by, bw, 18);
   float t = bw / 2.0 * CA_SIDE_THRESH / 12.0;
@@ -309,9 +277,6 @@ void coolClick() {
   else if (caHit(3)) caSetMode((caMode + 1) % 3);
 }
 
-// 1 / 2 / 3 fire JUMP / MOVE_LEFT / MOVE_RIGHT without the sensor (for testing)
-// 1 / 2 / 3 pick the mode, M cycles through them
-// Test keys without the sensor: 7 = JUMP (W), 8 = LEFT (A), 9 = RIGHT (D), 0 = SPACE
 void coolKey() {
   if (key == 'c' || key == 'C') caStartCalibration();
   else if (key == 'e' || key == 'E') caToggle();
@@ -338,12 +303,11 @@ void caSetMode(int m) {
   else                      caMsg = "Mode: Strenuous. Jump to jump, step sideways to change lane.";
 }
 
-// Relaxed mode: each pressure sensor is a button. Fires once per press.
 void caRelaxedFeed(int now) {
   float[] pad = { mfBuf[BUF-1], mmBuf[BUF-1], lfBuf[BUF-1] };
   for (int p = 0; p < 3; p++) {
     caPadValue[p] = pad[p];
-    if (!caPadArmed[p]) {                   // standing on it when the mode started doesn't count
+    if (!caPadArmed[p]) {
       caPadArmed[p] = pad[p] < RELAXED_OFF;
       continue;
     }
@@ -355,7 +319,7 @@ void caRelaxedFeed(int now) {
     }
   }
 }
-// Space-only mode: the MF pad is a Space button (fires once per press)
+
 void caSpacePadFeed() {
   float mf = mfBuf[BUF-1];
   caPadValue[0] = mf;
