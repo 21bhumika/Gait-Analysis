@@ -33,6 +33,12 @@ int lastContactGait = -1;
 float strideMs = 0;
 int walkStart = 0;
 
+// Medial Force Percentage, live and averaged over the last foot contact
+float mfpLive = 0;
+float stepMfp = -1;   // -1 until a contact has finished
+float mfpSum = 0;
+int mfpSamples = 0;
+
 synchronized void resetGait() {
   footArmed = false;
   footDown  = false;
@@ -43,6 +49,7 @@ synchronized void resetGait() {
   strideMs  = 0;
   lastContactGait = -1;
   gaitMs = new int[GAITS.length];
+  stepMfp = -1;
   resetStride();
   sessionMedialSum = 0;
   sessionTotalSum = 0;
@@ -50,7 +57,9 @@ synchronized void resetGait() {
 
 synchronized void updateGait(int now) {
   float mf = mfBuf[BUF-1], lf = lfBuf[BUF-1], mm = mmBuf[BUF-1], heel = heelBuf[BUF-1];
-  boolean on  = mf > FOOT_ON  || lf > FOOT_ON  || mm > FOOT_ON  || heel > HEEL_ON;
+  mfpLive = (mm + mf) * 100 / (mm + mf + lf + heel + 0.001);
+
+  boolean on = mf > FOOT_ON  || lf > FOOT_ON  || mm > FOOT_ON  || heel > HEEL_ON;
   boolean off = mf < FOOT_OFF && lf < FOOT_OFF && mm < FOOT_OFF && heel < HEEL_OFF;
 
   if (!footArmed) {
@@ -61,25 +70,21 @@ synchronized void updateGait(int now) {
   if (!footDown && on) landFoot(now);
 
   if (footDown) {
+    peakMF   = max(peakMF, mf);
+    peakLF   = max(peakLF, lf);
+    peakMM   = max(peakMM, mm);
+    peakHeel = max(peakHeel, heel);
+    mfpSum += mfpLive;
+    mfpSamples++;
 
-  peakMF   = max(peakMF, mf);
-  peakLF   = max(peakLF, lf);
-  peakMM   = max(peakMM, mm);
-  peakHeel = max(peakHeel, heel);
+    // Accumulate FSR readings during stance
+    if (!off) {
+      sessionMedialSum += mf + mm;
+      sessionTotalSum += mf + lf + mm + heel;
+    }
 
-  // Accumulate FSR readings during stance
-  if (!off) {
-
-    sessionMedialSum += mf + mm;
-
-    sessionTotalSum +=
-      mf + lf + mm + heel;
+    if (off && now - landTime >= MIN_CONTACT_MS) liftFoot(now);
   }
-
-  if (off && now - landTime >= MIN_CONTACT_MS) {
-    liftFoot(now);
-  }
-}
 }
 
 void landFoot(int now) {
@@ -100,11 +105,14 @@ void landFoot(int now) {
   landTime = now;
   footDown = true;
   peakMF = peakLF = peakMM = peakHeel = 0;
+  mfpSum = 0;
+  mfpSamples = 0;
 }
 
 void liftFoot(int now) {
   footDown = false;
   if (now - landTime >= GAIT_PAUSE_MS) return;   // standing still, not a step
+  stepMfp = mfpSum / mfpSamples;
   String gait = classifyContact();
   addGaitVote(gait);
   for (int i = 0; i < GAITS.length; i++) {

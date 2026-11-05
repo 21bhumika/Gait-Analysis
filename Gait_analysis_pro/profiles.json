@@ -1,26 +1,28 @@
 {
   "profiles": [
     {
+      "stepLengthCm": 0,
       "channels": [
         1,
-        2,
         3,
-        4
+        4,
+        2
       ],
       "name": "Green board",
       "heightCm": 170,
-      "stepWidthCm": 0
+      "stepWidthCm": 30
     },
     {
+      "stepLengthCm": 149,
       "channels": [
         1,
-        4,
         3,
+        4,
         2
       ],
       "name": "Orange board",
-      "heightCm": 170,
-      "stepWidthCm": 0
+      "heightCm": 180,
+      "stepWidthCm": 30
     }
   ],
   "active": 1
